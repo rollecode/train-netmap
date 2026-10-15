@@ -1,3 +1,7 @@
+### 1.2.4: 2026-10-15
+
+* Make the offline and good line smaller with more space above it
+
 ### 1.2.3: 2026-10-15
 
 * Dim the offline and good line
