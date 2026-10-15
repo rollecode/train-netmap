@@ -37,9 +37,11 @@
   #notice a { color: var(--fg); }
   #notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   #notice:empty { display: none; }
-  #arrive, #trip-sum { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+  #detail { margin: 4px 0 0; font-size: 15px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 20px; }
+  #detail:has(#arrive:empty):has(#trip-sum:empty) { display: none; }
   #arrive b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-  #arrive:empty, #trip-sum:empty { display: none; }
+  .soft-bad { color: #f0a097; }
+  .soft-good { color: #8fd9b3; }
   [data-zoom="far"] .stop-label:not(.end):not(.next) { display: none; }
   .leaflet-control-scale-line { background: none; border-color: var(--muted); color: var(--muted); font: 11px var(--sans); text-shadow: 0 0 3px var(--ink); }
   #forecast b { color: var(--fg); font-weight: 600; }
@@ -137,8 +139,7 @@
     <li><b id="outages">0</b>outages</li>
   </ul>
   <p id="forecast"></p>
-  <p id="arrive"></p>
-  <p id="trip-sum"></p>
+  <p id="detail"><span id="arrive"></span><span id="trip-sum"></span></p>
   <p id="notice"></p>
 </header>
 
@@ -758,8 +759,10 @@ function render() {
   $('outages').textContent = outages;
   const dest = stops.at(-1), left = dest ? dest.t - Date.now() : 0;
   if (dest && left > 0) {
-    const s = Math.floor(left / 1000), cd = `${Math.floor(s / 3600)}h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}min ${String(s % 60).padStart(2, '0')}s`;
-    $('arrive').replaceChildren(`${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }));
+    const s = Math.floor(left / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+    const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(' ');
+    $('arrive').replaceChildren(`Arriving in ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }));
   } else $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}` : '';
   const last = points.at(-1);
   setFavicon(online === null ? 'off' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
@@ -791,7 +794,9 @@ function drawRibbon() {
 
   const secs = p => p.g ?? POLL / 1000, total = inTrip.reduce((a, p) => a + secs(p), 0);
   const off = inTrip.filter(p => !p.ok).reduce((a, p) => a + secs(p), 0), good = inTrip.filter(p => p.ok && quality(p) === 'good').reduce((a, p) => a + secs(p), 0);
-  $('trip-sum').textContent = inTrip.length ? `Offline ${dur(off * 1000)} so far, ${Math.round(good / total * 100)}% good` : '';
+  const tint = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
+  if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`));
+  else $('trip-sum').textContent = '';
   const next = stops.find(s => s.t > now);
   const placed = { above: -Infinity, below: -Infinity };
   stops.forEach((s, i) => {

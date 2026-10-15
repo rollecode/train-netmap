@@ -1,3 +1,7 @@
+### 1.2.1: 2026-10-15
+
+* Tint offline time red and good share green, spell out the arrival countdown on one line
+
 ### 1.2.0: 2026-10-15
 
 * Colour the tab icon by connection quality, show bandwidth and speed in the title
