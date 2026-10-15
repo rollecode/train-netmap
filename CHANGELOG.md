@@ -1,3 +1,8 @@
+### 1.4.0: 2026-10-15
+
+* Add start.command and start.sh, which serve the page locally so system notifications stick
+* Mark alert cards with a dot instead of a bar
+
 ### 1.3.4: 2026-10-15
 
 * Show every alert as a card on the page, and the last one in the alerts panel

@@ -9,7 +9,7 @@ An **offline-first single html-file page** that follows your train across Finlan
 ## Quick start
 
 1. Download or clone this repository.
-2. Open `index.html` in Chrome or Chromium.
+2. Double-click `start.command` on a Mac, or run `./start.sh` on Linux. It serves the folder on `http://localhost:8080/` and opens it in your browser. Opening `index.html` straight from the file works too, with one difference: browsers forget notification permission for a file-opened page, so alerts then show only inside the page.
 3. Pick your departure and arrival stations. The train fills itself in, or type one, as `IC 63`, `IC63` or `63`.
 
 That is all it needs. The page tells you on screen if something is missing. The map background wants a free key from [CARTO](https://carto.com/basemaps): copy `config.example.js` to `config.js`, paste the key in and reload.
@@ -26,7 +26,7 @@ The track is the same train's GPS trail from an earlier day, fetched once per tr
 
 ## Alerts
 
-Press "Alerts" to choose which ones you want; the same panel has a test button. Every alert plays a short tone, puts its text in the tab title for 20 seconds and writes a line under the readings. A system notification banner comes on top of that when the browser allows notifications, which Chrome usually refuses for a page opened from a file; serve the folder over http (see Offline below) if you want the banners. The alerts are: a dead zone 3 minutes ahead and again under a minute ahead, the connection dropping, when it is expected back, when it is back, when it is slow for half a minute, when it gets faster, when faster coverage is 2 minutes ahead, bandwidth collapsing under 1 Mbps or recovering, the next stop 2 minutes out, the destination 10 and 2 minutes out, and the train's delay changing by 3 minutes or more. Each alert is also written under the readings for two minutes, so you can tell when the browser sent one that the system swallowed.
+Press "Alerts" to choose which ones you want; the same panel has a test button. Every alert shows a card on the page, plays a short tone and puts its text in the tab title for 20 seconds. A system notification banner comes on top of that once you allow notifications from the panel, which sticks when the page was started with `start.command` or `start.sh`; a browser forgets the grant for a page opened straight from the file. The alerts are: a dead zone 3 minutes ahead and again under a minute ahead, the connection dropping, when it is expected back, when it is back, when it is slow for half a minute, when it gets faster, when faster coverage is 2 minutes ahead, bandwidth collapsing under 1 Mbps or recovering, the next stop 2 minutes out, the destination 10 and 2 minutes out, and the train's delay changing by 3 minutes or more. Each alert is also written under the readings for two minutes, so you can tell when the browser sent one that the system swallowed.
 
 Two things on the computer decide whether you see them. On macOS the browser must be allowed under System Settings, Notifications, and a Focus mode such as Do Not Disturb hides them unless the browser is on that Focus mode's allowed list; a web page cannot get past Focus by itself.
 
@@ -36,13 +36,7 @@ The measuring runs in a web worker, which Chrome does not slow down in a hidden 
 
 Leaflet is in the repository, and the station list, timetable, track and samples are kept in the browser, so a trip that was set up once comes back without a connection. Map tiles along the route ahead are fetched while online.
 
-Opened straight from the file, tiles rely on the browser's own cache. To be certain they are kept, serve the folder once while online and open that address instead:
-
-```
-python3 -m http.server 8080
-```
-
-A service worker then keeps the page and every tile it has seen.
+Started with `start.command` or `start.sh`, a service worker keeps the page and every tile it has seen. Opened straight from the file, tiles rely on the browser's own cache instead.
 
 ## Data and privacy
 
