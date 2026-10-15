@@ -1,3 +1,7 @@
+### 1.4.3: 2026-10-15
+
+* Close the trip and alerts panels with Esc or a click outside
+
 ### 1.4.2: 2026-10-15
 
 * Offer the trains running now towards the destination when there is no direct train

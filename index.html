@@ -1037,6 +1037,9 @@ $('whole').onclick = () => {
   map.fitBounds(L.latLngBounds(b), { paddingTopLeft: [40, 160], paddingBottomRight: [40, 180] });
 };
 $('setup-cancel').onclick = () => { $('setup').hidden = true; };
+// Esc and a click on the dimmed backdrop close the panels; the trip form stays when there is no trip yet.
+addEventListener('keydown', e => { if (e.key === 'Escape') { $('alerts').hidden = true; if (trip) $('setup').hidden = true; } });
+for (const id of ['setup', 'alerts']) $(id).addEventListener('click', e => { if (e.target === $(id) && (id === 'alerts' || trip)) $(id).hidden = true; });
 $('setup').querySelector('form').onsubmit = async e => {
   e.preventDefault();
   const btn = e.submitter, msg = $('setup-msg');
