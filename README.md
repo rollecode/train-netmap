@@ -24,6 +24,12 @@ The train's position and speed come from Digitraffic every 15 seconds. While off
 
 The track is the same train's GPS trail from an earlier day, fetched once per train. The forecast ("Connection should be back in about 4 min") reads two things: the 1.2 km hexagons built from every trip you have logged in this browser, and under them Ookla's Speedtest results for Finland in 610 m tiles, merged from the last four quarters and shipped in `data/fi-mobile.js`. Your own trips win where they exist. Where no one has run a Speedtest within 3 km of the track, the forecast expects no signal.
 
+## Alerts
+
+Press "Turn on alerts" once; a test alert follows right away. After that you get one when a dead zone is about 3 minutes ahead, when the connection is expected back, when it is back and when it gets faster. Each alert is also written under the readings for two minutes, so you can tell when the browser sent one that the system swallowed.
+
+Two things on the computer decide whether you see them. On macOS the browser must be allowed under System Settings, Notifications, and a Focus mode such as Do Not Disturb hides them unless the browser is on that Focus mode's allowed list; a web page cannot get past Focus by itself. Keep the page in a visible tab or its own window: Chrome slows a hidden tab down to one check per minute after a few minutes, so alerts from a hidden tab arrive late.
+
 ## Offline
 
 Leaflet is in the repository, and the station list, timetable, track and samples are kept in the browser, so a trip that was set up once comes back without a connection. Map tiles along the route ahead are fetched while online.

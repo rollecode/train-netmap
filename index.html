@@ -408,7 +408,11 @@ const NEIGHBOURS = [[0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 function notify(kind, title, body, gap = 180000) {
   if (Notification.permission !== 'granted' || Date.now() - (notified[kind] || 0) < gap) return;
   notified[kind] = Date.now();
-  new Notification(title, { body });
+  // Stays on screen until dismissed, and a repeat of the same kind replaces the earlier one.
+  try { new Notification(title, { body, tag: kind, requireInteraction: kind !== 'faster' }); } catch {}
+  // The page keeps its own record, so a silenced notification is still visible here.
+  $('notice').textContent = `Alert ${hhmm(Date.now())}: ${title}. ${body}`;
+  setTimeout(() => { if ($('notice').textContent.startsWith('Alert ')) $('notice').textContent = ''; }, 120000);
 }
 
 // Speedtest by Ookla open data: a 610 m grid of measured mobile speed for Finland, the baseline wherever own trips have nothing.
@@ -855,8 +859,12 @@ const syncNotify = () => {
   const on = Notification.permission === 'granted';
   $('notify').textContent = on ? 'Alerts on' : 'Turn on alerts';
   $('notify').setAttribute('aria-pressed', on);
+  if (Notification.permission === 'denied') $('notice').textContent = 'Alerts are blocked for this page. Allow notifications in the browser\'s site settings, then reload.';
 };
-$('notify').onclick = () => Notification.requestPermission().then(syncNotify);
+$('notify').onclick = () => Notification.requestPermission().then(p => {
+  syncNotify();
+  if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'You get one when a dead zone is ahead, when the connection drops and when it comes back.'); }
+});
 // Export carries every logged trip, so one file restores the whole coverage map on another browser.
 $('export').onclick = () => {
   const trips = {};
