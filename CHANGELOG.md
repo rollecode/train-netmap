@@ -1,3 +1,7 @@
+### 1.7.3: 2026-10-15
+
+* Write clock times with a colon
+
 ### 1.7.2: 2026-10-15
 
 * Show every mapped mast, with operator data where OpenCelliD has it, and the nearest mast to the train
