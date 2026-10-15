@@ -1,3 +1,7 @@
+### 1.5.1: 2026-10-15
+
+* Size alert cards to their text and make them more translucent
+
 ### 1.5.0: 2026-10-15
 
 * Give each kind of alert its own tone and a coloured icon in the system banner
