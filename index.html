@@ -37,7 +37,8 @@
   #notice a { color: var(--fg); }
   #notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   #notice:empty { display: none; }
-  #trip-sum { color: var(--muted); }
+  #trip-sum { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+  #trip-sum:empty { display: none; }
   [data-zoom="far"] .stop-label:not(.end):not(.next) { display: none; }
   .leaflet-control-scale-line { background: none; border-color: var(--muted); color: var(--muted); font: 11px var(--sans); text-shadow: 0 0 3px var(--ink); }
   #forecast b { color: var(--fg); font-weight: 600; }
@@ -135,6 +136,7 @@
     <li><b id="outages">0</b>outages</li>
   </ul>
   <p id="forecast"></p>
+  <p id="trip-sum"></p>
   <p id="notice"></p>
 </header>
 
@@ -151,7 +153,6 @@
 <section id="trip" hidden>
   <div class="trip-head">
     <div id="trip-name"></div>
-    <div id="trip-sum"></div>
     <div id="trip-eta"></div>
   </div>
   <svg id="ribbon" role="img" aria-label="Connection quality along the trip"></svg>
@@ -466,8 +467,17 @@ function forecast() {
   const span = m => `${mins(m)}, ${Math.round(m / 1000)} km`;
   const ahead = path.map(p => ({ ...p, c: coverageAt(p.lat, p.lon) }));
   const known = ahead.filter(p => p.c);
-  // Fewer than 2 km of logged coverage ahead is too thin to forecast from.
-  if (known.length < 4) { el.textContent = 'No earlier trips on this stretch yet, so no forecast.'; return; }
+  // Hexes from this trip only reach a couple of km ahead; a real forecast needs earlier trips on the line.
+  const now = Date.now(), reach = known.length ? known.at(-1).d : 0;
+  if (reach < 5000) {
+    const next = stops.find(s => s.t > now);
+    const drops = points.filter((p, i) => p.t > now - 1800000 && !p.ok && points[i - 1]?.ok).length;
+    const parts = ['No earlier trips on this line, so nothing to forecast from yet.'];
+    if (next) parts.push(`Next stop ${next.name} in about ${Math.max(1, Math.round((next.t - now) / 60000))} min, and towns usually have coverage.`);
+    if (drops) parts.push(`${drops} ${drops === 1 ? 'drop' : 'drops'} in the last 30 min.`);
+    el.textContent = parts.join(' ');
+    return;
+  }
   const last = points.at(-1), cur = !last?.ok ? 'off' : quality(last);
   const say = (lead, strong, tail = '') => { el.replaceChildren(lead, Object.assign(document.createElement('b'), { textContent: strong }), tail); };
 
@@ -492,7 +502,7 @@ function forecast() {
     const faster = known.find(p => RANK[p.c] >= RANK.fair);
     if (faster) return say('Faster connection in ', mins(faster.d), '.');
   }
-  say('Coverage looks steady for the next ', span(known.at(-1).d), '.');
+  say('Earlier trips show steady coverage for the next ', span(reach), '.');
 }
 
 function watchSpeedUp(p) {
