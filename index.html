@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Train netmap</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%234cc38a' opacity='.35'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23eef3f6' stroke='%230d1b26' stroke-width='3'/%3E%3C/svg%3E">
+<link id="favicon" rel="icon" href="">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
@@ -37,8 +37,9 @@
   #notice a { color: var(--fg); }
   #notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   #notice:empty { display: none; }
-  #trip-sum { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
-  #trip-sum:empty { display: none; }
+  #arrive, #trip-sum { margin: 4px 0 0; font-size: 15px; color: var(--muted); }
+  #arrive b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #arrive:empty, #trip-sum:empty { display: none; }
   [data-zoom="far"] .stop-label:not(.end):not(.next) { display: none; }
   .leaflet-control-scale-line { background: none; border-color: var(--muted); color: var(--muted); font: 11px var(--sans); text-shadow: 0 0 3px var(--ink); }
   #forecast b { color: var(--fg); font-weight: 600; }
@@ -136,6 +137,7 @@
     <li><b id="outages">0</b>outages</li>
   </ul>
   <p id="forecast"></p>
+  <p id="arrive"></p>
   <p id="trip-sum"></p>
   <p id="notice"></p>
 </header>
@@ -192,7 +194,7 @@ const COLORS = { good: '#4cc38a', fair: '#e3b341', poor: '#ef6b5b', off: '#5f718
 const $ = id => document.getElementById(id);
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { $('notice').textContent = 'Browser storage is full, so new samples are not being saved. Export your data.'; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { $('notice').textContent = 'Browser storage is full, so new samples are not being saved. Export your data.'; return false; } },
 };
 // Digitraffic grants a higher request rate when the app names itself.
 const DT_HEADERS = { 'Digitraffic-User': 'train-netmap' };
@@ -208,15 +210,17 @@ const dur = ms => {
 const mbps = d => d >= 100 ? `${Math.round(d)} Mbps` : d >= 10 ? `${Math.round(d)} Mbps` : `${d.toFixed(1)} Mbps`;
 // A 2 MB download every couple of minutes measures real throughput; Chrome's own estimate stops at 10 Mbps.
 const SPEED_URL = 'https://speed.cloudflare.com/__down?bytes=2000000', SPEED_EVERY = 120000;
-let speedAt = 0, measured = null;
+let speedAt = 0, measured = null, speedRunning = false;
 async function measureSpeed() {
   speedAt = Date.now();
+  speedRunning = true;
   const t0 = performance.now();
   try {
     const r = await fetch(SPEED_URL, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
     const bytes = (await r.arrayBuffer()).byteLength;
     measured = bytes * 8 / 1e6 / ((performance.now() - t0) / 1000);
   } catch { measured = null; }
+  speedRunning = false;
   return measured;
 }
 // Bands for a warm connection to a nearby edge: calls and SSH are fine under 150 ms, browsing drags past 400 ms.
@@ -287,14 +291,16 @@ function addToHex(p) {
     h = { n: 0, off: 0, rtts: [], poly: L.polygon(hexPolygon(q, r), { stroke: false }).addTo(hexLayer) };
     hexes.set(k, h);
   }
-  h.n++;
+  // n and off are seconds, weighted by the gap each sample covers.
+  const w = p.g ?? POLL / 1000;
+  h.n += w;
   // v1 samples timed a Digitraffic API call, roughly 150 ms heavier than today's edge probe.
-  if (p.ok) h.rtts.push(p.v === 2 ? p.rtt : Math.max(20, p.rtt - 150)); else h.off++;
+  if (p.ok) h.rtts.push(p.v === 2 ? p.rtt : Math.max(20, p.rtt - 150)); else h.off += w;
   const m = h.rtts.length ? median(h.rtts) : null;
   const q8 = h.off / h.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m });
-  // More samples, more opaque: a single reading should not look like settled coverage.
-  h.poly.setStyle({ fillColor: COLORS[q8], fillOpacity: .18 + Math.min(h.n, 24) / 24 * .37 });
-  h.poly.bindTooltip(`${h.n} samples<br>${m === null ? 'no answer' : 'median ' + m + ' ms'}<br>${Math.round(h.off / h.n * 100)}% offline`, { sticky: true });
+  // More time in a hex, more opaque: a single reading should not look like settled coverage.
+  h.poly.setStyle({ fillColor: COLORS[q8], fillOpacity: .18 + Math.min(h.n, 120) / 120 * .37 });
+  h.poly.bindTooltip(`${Math.round(h.n)} s sampled<br>${m === null ? 'no answer' : 'median ' + m + ' ms'}<br>${Math.round(h.off / h.n * 100)}% offline`, { sticky: true });
 }
 // Every trip ever logged feeds the coverage map.
 for (let i = 0; i < localStorage.length; i++) {
@@ -324,11 +330,14 @@ async function loadStations() {
 
 // ---------- trip ----------
 const params = new URLSearchParams(location.search);
-const today = new Date().toISOString().slice(0, 10);
+// Digitraffic keys trains by their Finnish departure date, so the date must be local, never UTC.
+const localDate = ms => { const d = new Date(ms); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const today = localDate(Date.now());
 // "IC 63", "IC63" and "63" all mean train 63.
 const trainNo = v => String(v ?? '').match(/\d+/)?.[0];
 const lastTrip = store.get('netmap-trip');
-let trip = lastTrip?.date === today && trainNo(lastTrip.train) ? { ...lastTrip, train: trainNo(lastTrip.train) } : null;
+// A trip from yesterday is still live after midnight on a night train.
+let trip = [today, localDate(Date.now() - 86400000)].includes(lastTrip?.date) && trainNo(lastTrip.train) ? { ...lastTrip, train: trainNo(lastTrip.train) } : null;
 if (trainNo(params.get('train'))) trip = { train: trainNo(params.get('train')), from: params.get('from'), to: params.get('to'), date: today };
 let stops = [], timetableAt = 0, trainLabel = '', track = [], trackEnd = Infinity;
 const pointsKey = () => `netmap-${trip.date}-${trip.train}`;
@@ -351,7 +360,11 @@ async function findTrains(from, to) {
 }
 
 async function loadTimetable() {
-  const [t] = await get(`/trains/${trip.date}/${trip.train}`, 15000);
+  const train = trip.train;
+  let t;
+  try { [t] = await get(`/trains/${trip.date}/${train}`, 15000); }
+  finally { timetableAt = Date.now(); }
+  if (train !== trip?.train) return;
   if (!t) {
     stops = [];
     timetableAt = Date.now();
@@ -368,10 +381,9 @@ async function loadTimetable() {
   stops = seq.map((code, i) => {
     const arr = rows.find(r => r.stationShortCode === code && r.type === 'ARRIVAL');
     const dep = rows.find(r => r.stationShortCode === code && r.type === 'DEPARTURE');
-    const row = i === 0 ? dep : arr;
-    return { code, name: stationName(code), t: when(row), late: row.differenceInMinutes || 0, passed: !!row.actualTime };
-  });
-  timetableAt = Date.now();
+    const row = (i === 0 ? dep : arr) || arr || dep;
+    return row && { code, name: stationName(code), t: when(row), late: row.differenceInMinutes || 0, passed: !!row.actualTime };
+  }).filter(Boolean);
   store.set(stopsKey(), stops);
   drawRoute();
 }
@@ -380,9 +392,11 @@ async function loadTimetable() {
 // The same train number runs the same line every day, so its GPS trail from an earlier day is the real track geometry.
 async function loadTrack() {
   if (track.length) return;
+  const train = trip.train;
   for (let back = 1; back <= 7; back++) {
-    const d = new Date(Date.now() - back * 86400000).toISOString().slice(0, 10);
-    const pts = await get(`/train-locations/${d}/${trip.train}`, 30000).catch(() => []);
+    const d = localDate(Date.now() - back * 86400000);
+    const pts = await get(`/train-locations/${d}/${train}`, 30000).catch(() => []);
+    if (train !== trip?.train) return;
     if (pts.length < 50) continue;
     pts.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     track = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
@@ -455,7 +469,7 @@ function coverageAt(lat, lon) {
   let best = null;
   for (const [dq, dr] of NEIGHBOURS) {
     const h = hexes.get((q + dq) + ',' + (r + dr));
-    if (h && h.n >= 2 && (!best || h.n > best.n)) best = h;
+    if (h && h.n >= 10 && (!best || h.n > best.n)) best = h;
   }
   if (best) {
     const m = best.rtts.length ? median(best.rtts) : null;
@@ -538,7 +552,7 @@ function forecast() {
   const say = (lead, strong, tail = '') => { el.replaceChildren(lead, Object.assign(document.createElement('b'), { textContent: strong }), tail); };
 
   if (cur === 'off') {
-    const back = known.find(p => RANK[p.c] >= RANK.poor);
+    const back = known.find(p => p.d >= 500 && RANK[p.c] >= RANK.poor);
     if (!back) return say('No coverage logged for the next ', span(path.at(-1).d), '.');
     say('Connection should be back in ', mins(back.d), '.');
     notify('eta-back', 'Connection expected back', `In ${mins(back.d)}, based on earlier trips.`, 600000);
@@ -564,15 +578,14 @@ function forecast() {
 function watchSpeedUp(p) {
   if (!p.ok) { poorSince = null; return; }
   const q = quality(p);
-  if (q === 'poor') poorSince ??= p.t;
-  else if (q === 'good' && poorSince && p.t - poorSince > 60000) {
-    notify('faster', 'Connection is faster', `Latency down to ${p.rtt} ms.`);
-    poorSince = null;
-  }
+  if (q === 'poor') { poorSince ??= p.t; return; }
+  if (q === 'good' && poorSince && p.t - poorSince > 60000) notify('faster', 'Connection is faster', `Latency down to ${p.rtt} ms.`);
+  poorSince = null;
 }
 
 // Load the tiles along the route ahead while online, so the map keeps working in dead zones.
 function prefetchTiles() {
+  if (!CARTO_KEY) return;
   const z = map.getZoom(), n = 2 ** z, want = [];
   for (const p of aheadPath(1000, 150000)) {
     const x = Math.floor((p.lon + 180) / 360 * n);
@@ -659,30 +672,39 @@ function setState(ok) {
   render();
 }
 
+let ticking = false;
 async function tick() {
-  if (!trip) return;
+  if (ticking) return;
+  ticking = true;
+  try { await probe(); } finally { ticking = false; }
+}
+async function probe() {
+  // A running download would inflate the probe's round trip, so it waits.
+  if (!trip || speedRunning) return;
   const conn = navigator.connection || {};
   const p = { t: Date.now(), ok: false, down: conn.downlink, v: 2 };
   const t0 = performance.now();
   try {
     // An opaque no-cors response still proves the round trip; a network failure rejects.
-    await fetch(PROBE, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    await fetch(PROBE, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(POLL) });
     p.rtt = Math.round(performance.now() - t0);
     p.ok = true;
     offlineReason = '';
   } catch (e) {
-    offlineReason = e.name === 'TimeoutError' ? 'no answer in 10s' : 'no connection';
+    offlineReason = e.name === 'TimeoutError' ? 'no answer in 5s' : 'no connection';
   }
   // Digitraffic allows 50 requests per 5 minutes, so the position is fetched less often than the probe runs.
+  const train = trip.train;
   if (p.ok && p.t - locAt >= LOCATION_EVERY && p.t >= locPausedUntil) {
     locAt = p.t;
     try {
-      const r = await fetch(`${API}/train-locations/latest/${trip.train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: DT_HEADERS });
+      const r = await fetch(`${API}/train-locations/latest/${train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: DT_HEADERS });
       if (r.status === 429) locPausedUntil = p.t + 60000;
       const [loc] = r.ok ? await r.json() : [];
-      if (loc) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
+      if (loc && train === trip?.train) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
     } catch {}
   }
+  if (train !== trip?.train) return;
   // Without a fresh fix, move the estimate along the route at the speed of the last fix, so dead zones are painted where the train actually was.
   if (!p.fix && fix) {
     const d = fix.kmh / 3.6 * (p.t - fix.t) / 1000;
@@ -703,6 +725,8 @@ async function tick() {
     if (follow) map.panTo(lastPos);
   }
   if (p.fix) drawRoute();
+  // Each sample stands for the seconds since the previous one, so slow probes do not under-count offline time.
+  p.g = Math.min(30, (p.t - (points.at(-1)?.t ?? p.t - POLL)) / 1000);
   addTrail(points.at(-1), p);
   points.push(p);
   store.set(pointsKey(), points);
@@ -711,12 +735,20 @@ async function tick() {
   watchSpeedUp(p);
   forecast();
   if (p.ok) prefetchTiles();
-  if (p.ok && Date.now() - timetableAt > 60000) await loadTimetable().catch(() => {});
+  if (p.ok && Date.now() - timetableAt > 60000) loadTimetable().then(drawRibbon).catch(() => {});
   drawRibbon();
   render();
 }
 
 // ---------- rendering ----------
+// The tab icon glows with the current connection quality, so the state reads from the tab strip.
+let faviconFor = '';
+function setFavicon(q) {
+  if (q === faviconFor) return;
+  faviconFor = q;
+  const c = COLORS[q] || COLORS.off;
+  $('favicon').href = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="${c}" opacity=".45"/><circle cx="16" cy="16" r="9" fill="${c}"/><circle cx="16" cy="16" r="4" fill="#eef3f6"/></svg>`)}`;
+}
 function render() {
   const state = online === null ? 'connecting' : online ? 'online' : 'offline';
   $('status').dataset.state = state;
@@ -724,7 +756,15 @@ function render() {
   $('state').textContent = { connecting: 'Connecting', online: 'Online', offline: 'Offline' }[state];
   $('for').textContent = online === null ? '' : `for ${dur(Date.now() - since)}` + (online === false && offlineReason ? `, ${offlineReason}` : '');
   $('outages').textContent = outages;
-  document.title = online === false ? `Offline ${dur(Date.now() - since)}` : lastKmh != null ? `${lastKmh} km/h, Train netmap` : 'Train netmap';
+  const dest = stops.at(-1), left = dest ? dest.t - Date.now() : 0;
+  if (dest && left > 0) {
+    const s = Math.floor(left / 1000), cd = `${Math.floor(s / 3600)}h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}min ${String(s % 60).padStart(2, '0')}s`;
+    $('arrive').replaceChildren(`${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }));
+  } else $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}` : '';
+  const last = points.at(-1);
+  setFavicon(online === null ? 'off' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
+  const live = [measured != null && online ? mbps(measured) : null, lastKmh != null ? `${lastKmh} km/h` : null].filter(Boolean).join(', ');
+  document.title = online === false ? `Offline ${dur(Date.now() - since)} - Train netmap` : live ? `${live} - Train netmap` : 'Train netmap';
 }
 
 const svg = (tag, attrs, text) => {
@@ -749,8 +789,9 @@ function drawRibbon() {
     nodes.push(svg('rect', { x: a, y: Y - 4, width: Math.max(1, b - a), height: 8, fill: COLORS[quality(p)] }));
   });
 
-  const off = inTrip.filter(p => !p.ok).length, good = inTrip.filter(p => p.ok && quality(p) === 'good').length;
-  $('trip-sum').textContent = inTrip.length ? `Offline ${dur(off * POLL)} so far, ${Math.round(good / inTrip.length * 100)}% good` : '';
+  const secs = p => p.g ?? POLL / 1000, total = inTrip.reduce((a, p) => a + secs(p), 0);
+  const off = inTrip.filter(p => !p.ok).reduce((a, p) => a + secs(p), 0), good = inTrip.filter(p => p.ok && quality(p) === 'good').reduce((a, p) => a + secs(p), 0);
+  $('trip-sum').textContent = inTrip.length ? `Offline ${dur(off * 1000)} so far, ${Math.round(good / total * 100)}% good` : '';
   const next = stops.find(s => s.t > now);
   const placed = { above: -Infinity, below: -Infinity };
   stops.forEach((s, i) => {
@@ -889,7 +930,7 @@ $('import-file').onchange = async e => {
       const have = store.get(k) || [], seen = new Set(have.map(p => p.t));
       const merged = [...have, ...pts.filter(p => !seen.has(p.t))].sort((a, b) => a.t - b.t);
       added += merged.length - have.length;
-      store.set(k, merged);
+      if (!store.set(k, merged)) return;
     }
     $('notice').textContent = `Imported ${added} samples from ${Object.keys(trips).length} trips.`;
     setTimeout(() => location.reload(), 1500);
@@ -908,7 +949,8 @@ render();
 setInterval(() => { render(); if (online !== null) drawRibbon(); }, 1000);
 loadStations().then(() => { if (trip) loadTimetable().then(drawRibbon); }).catch(() => {});
 if (trip) startTrip(); else openSetup();
-const loop = () => tick().finally(() => setTimeout(loop, POLL));
+// Samples run on a fixed clock: the next one starts POLL after this one started, however long the probe took.
+const loop = async () => { const t = Date.now(); await tick(); setTimeout(loop, Math.max(500, POLL - (Date.now() - t))); };
 loop();
 </script>
 </body>

@@ -1,3 +1,14 @@
+### 1.2.0: 2026-10-15
+
+* Colour the tab icon by connection quality, show bandwidth and speed in the title
+* Count down to the destination under the forecast
+* Sample on a fixed 5 second clock and weight hexes by time covered
+* Keep the probe quiet during the bandwidth test
+* Use the Finnish date, keep a night train's trip after midnight
+* Ignore replies for a trip that was changed meanwhile
+* Cache map tiles in the service worker
+* Stop the faster-connection alert firing a minute late
+
 ### 1.1.0: 2026-10-15
 
 * Forecast from Speedtest open data where own trips have none

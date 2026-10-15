@@ -12,7 +12,7 @@ self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (u.hostname === 'basemaps.cartocdn.com') {
     // Tiles change rarely, so the cached copy wins; the whole point is having them in dead zones.
-    e.respondWith(caches.open(TILES).then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; })));
+    e.respondWith(caches.open(TILES).then(async c => (await c.match(e.request)) || fetch(e.request).then(r => { if (r.ok || r.type === 'opaque') c.put(e.request, r.clone()); return r; })));
   } else if (u.origin === location.origin) {
     // The page itself comes from the network when possible so edits show up, from the cache when offline.
     e.respondWith(fetch(e.request).then(r => { caches.open(SHELL).then(c => c.put(e.request, r.clone())); return r; }).catch(() => caches.match(e.request)));
