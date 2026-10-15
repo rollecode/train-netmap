@@ -1,3 +1,7 @@
+### 1.2.3: 2026-10-15
+
+* Dim the offline and good line
+
 ### 1.2.2: 2026-10-15
 
 * Put the offline and good figures on their own line
