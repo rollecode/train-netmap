@@ -1,8 +1,8 @@
 # Train netmap
 
-A single HTML page that follows your train across Finland and records how good the mobile connection is along the way. It shows your live position, the route with every stop, the connection quality painted on the map, and a forecast of when the connection comes back based on your earlier trips.
+A single **offline-first** HTML page that follows your train across Finland and records how good the mobile connection is along the way. It shows your live position, the route with every stop, the connection quality painted on the map, and a forecast of when the connection comes back based on your earlier trips.
 
-![Train netmap](screenshot.png)
+<img width="1642" height="1047" alt="SCR-20261015-ltrw-2" src="https://github.com/user-attachments/assets/fae6f96e-d3bc-4123-8cea-f3da810907d1" />
 
 ## Features
 
@@ -23,8 +23,6 @@ A single HTML page that follows your train across Finland and records how good t
 3. Open `index.html` in Chrome or Chromium. The bandwidth estimate shown before the first download test uses `navigator.connection`, which only exists in Chromium browsers; everything else works in Firefox and Safari too.
 
 Pick your departure and arrival stations and the train fills itself in. You can also type the train, as `IC 63`, `IC63` or `63`. A trip can be preset in the address: `index.html?train=63&from=PM&to=OL`, using Digitraffic's station codes.
-
-`config.js` is ignored by git, so your key stays on your machine.
 
 ## Offline
 
