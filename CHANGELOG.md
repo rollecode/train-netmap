@@ -1,3 +1,7 @@
+### 1.4.8: 2026-10-15
+
+* Report in the alerts panel whether the system banner was shown, and why not
+
 ### 1.4.7: 2026-10-15
 
 * Ask for notification permission as soon as the alerts panel opens on localhost

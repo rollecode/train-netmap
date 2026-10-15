@@ -518,7 +518,16 @@ function notify(kind, title, body, gap = 180000) {
   setTimeout(() => { if (titleFlash === title) titleFlash = ''; render(); }, 20000);
   render();
   if (alertsOn.sound) beep(sticky ? 3 : 2);
-  if (canNotify()) try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
+  // The panel reports what became of the system banner, so a missing one can be traced to the browser or to macOS.
+  const report = text => { $('alerts-last').textContent += ` ${text}`; };
+  if (!canNotify()) return report(Notification.permission === 'denied' ? 'No system banner: notifications are blocked for this page.' : 'No system banner: notifications not allowed yet.');
+  try {
+    const n = new Notification(title, { body, tag: kind, requireInteraction: sticky });
+    let shown = false;
+    n.onshow = () => { shown = true; report('System banner shown.'); };
+    n.onerror = () => report('System banner failed: the browser could not display it. Check System Settings, Notifications, and that the browser is allowed there.');
+    setTimeout(() => { if (!shown) report('The browser never reported the banner as shown. On macOS, check System Settings, Notifications for the browser, and Focus.'); }, 3000);
+  } catch (e) { report(`System banner error: ${e.message}`); }
 }
 
 // Speedtest by Ookla open data: a 610 m grid of measured mobile speed for Finland, the baseline wherever own trips have nothing.
