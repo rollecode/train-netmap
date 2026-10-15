@@ -32,6 +32,10 @@ Two things on the computer decide whether you see them. On macOS the browser mus
 
 The measuring runs in a web worker, which Chrome does not slow down in a hidden tab, so samples, the tab icon and alerts keep going while you browse in other tabs. The one thing that can stop it is Chrome's Memory Saver discarding the tab after a long time unused; turn Memory Saver off or add the page to its exceptions under chrome://settings/performance if you leave the page hidden for an hour or more.
 
+## Working on it
+
+After cloning, run `git config core.hooksPath .githooks` once. A post-commit hook then writes `version.js` with the changelog version and the commit hash, which the page shows bottom right.
+
 ## Offline
 
 Leaflet is in the repository, and the station list, timetable, track and samples are kept in the browser, so a trip that was set up once comes back without a connection. Map tiles along the route ahead are fetched while online.
@@ -43,7 +47,7 @@ Started with `start.command` or `start.sh`, a service worker keeps the page and 
 - Train positions, timetables and the track: [Fintraffic Digitraffic](https://www.digitraffic.fi), CC BY 4.0.
 - Map tiles: [CARTO](https://carto.com) on OpenStreetMap data.
 - Latency and bandwidth: `cp.cloudflare.com` and `speed.cloudflare.com`.
-- Masts: communication masts and towers from [OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL, in `data/fi-masts.js`. Press "Masts" to see them as beacons near the route; green ones are tagged as mobile phone sites. It is what volunteers have mapped, so it is far from every base station in the country.
+- Masts: communication masts and towers from [OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL, in `data/fi-masts.js`. They show as beacons with a 3 km disc around each, blue, or green when tagged as a mobile phone site; the disc is a reminder of a cell's reach, not a measured footprint. "Masts" turns them off. It is what volunteers have mapped, so it is far from every base station in the country.
 - Coverage baseline: [Speedtest by Ookla Global Mobile Network Performance Maps](https://www.ookla.com/ookla-for-good/open-data), CC BY-NC-SA 4.0. That licence covers `data/fi-mobile.js` only; the code is MIT.
 
 Nothing else leaves the browser. Export writes every trip to one JSON file, Import merges such a file back in, and the page warns when browser storage is full.

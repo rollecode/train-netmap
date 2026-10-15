@@ -1,0 +1,11 @@
+#!/bin/sh
+# Writes version.js with the changelog version and this commit's hash, then folds it into the commit.
+# The amend runs with hooks off, so it cannot loop.
+cd "$(git rev-parse --show-toplevel)" || exit 0
+version=$(grep -m1 '^### ' CHANGELOG.md | sed 's/### \([0-9.]*\).*/\1/')
+commit=$(git rev-parse --short HEAD)
+printf "window.NETMAP_VERSION = { version: '%s', commit: '%s' };\n" "$version" "$commit" > version.js
+if ! git diff --quiet -- version.js; then
+  git add version.js
+  git -c core.hooksPath=/dev/null commit --amend --no-edit -q
+fi

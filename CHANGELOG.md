@@ -1,3 +1,9 @@
+### 1.6.1: 2026-10-15
+
+* Colour the masts, brighten their beacons and draw a 3 km disc around each, on by default
+* Follow the train from the start, ask for notifications on the first click
+* Show the version and commit bottom right
+
 ### 1.6.0: 2026-10-15
 
 * Show communication masts from OpenStreetMap as beacons with a Masts switch
