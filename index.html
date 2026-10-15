@@ -42,6 +42,8 @@
   #detail { margin: 4px 0 0; font-size: 15px; color: var(--muted); display: grid; gap: 4px; }
   #detail:has(#arrive:empty):has(#trip-sum:empty) { display: none; }
   #arrive b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #near-mast:empty { display: none; }
+  #near-mast b { color: var(--fg); font-weight: 600; }
   #trip-sum { opacity: .7; font-size: 13px; margin-top: 10px; }
   #trip-best, #trip-worst { opacity: .7; font-size: 13px; }
   #trip-best:empty, #trip-worst:empty { display: none; }
@@ -179,7 +181,7 @@
     <li><b id="outages">0</b>outages</li>
   </ul>
   <p id="forecast"></p>
-  <p id="detail"><span id="arrive"></span><span id="trip-sum"></span><span id="trip-best"></span><span id="trip-worst"></span></p>
+  <p id="detail"><span id="arrive"></span><span id="near-mast"></span><span id="trip-sum"></span><span id="trip-best"></span><span id="trip-worst"></span></p>
   <p id="notice"></p>
 </header>
 
@@ -513,7 +515,7 @@ function loadMasts() {
   if (masts) return drawMasts();
   const el = document.createElement('script');
   el.src = 'data/fi-cells.js';
-  el.onload = () => { masts = window.NETMAP_CELLS || []; drawMasts(); };
+  el.onload = () => { masts = window.NETMAP_CELLS || []; drawMasts(); nearestMast(); };
   document.head.appendChild(el);
 }
 // Measured coverage: every Speedtest tile in view, so what surrounds a mast is what people actually got there.
@@ -540,14 +542,33 @@ function drawMasts() {
   const step = Math.max(1, Math.ceil(inView.length / 500));
   // The measured range is where a site has been seen from; with more than a few dozen sites in view the circles blur into a blob, so they wait for a closer zoom.
   const close = map.getZoom() >= 11 && inView.length <= 80;
-  for (const [lat, lon, net, range, samples, radios, onMast] of inView.filter((_, i) => i % step === 0)) {
-    if (close) L.circle([lat, lon], { radius: range, stroke: false, fillColor: colour[net] || '#9fb0bf', fillOpacity: .05, interactive: false }).addTo(mastLayer);
+  for (const [lat, lon, nets, range, samples, radios, kind] of inView.filter((_, i) => i % step === 0)) {
+    const net = nets[0];
+    if (close && range) L.circle([lat, lon], { radius: range, stroke: false, fillColor: colour[net] || '#9fb0bf', fillOpacity: .05, interactive: false }).addTo(mastLayer);
+    const who = nets.length ? [...new Set(nets.map(n => OPERATORS[n] || 'MNC ' + n))].join(' and ') : 'operator unknown';
     const tech = RADIOS.filter(([bit]) => radios & bit).map(([, name]) => name).join(', ');
+    const seen = range ? `<br>seen up to ${range >= 1000 ? (range / 1000).toFixed(1) + ' km' : range + ' m'} away, ${samples} measurements` : '';
+    const where = kind ? 'Mapped mast' : 'Cell seen from here, mast unmapped';
     L.marker([lat, lon], {
-      icon: L.divIcon({ className: `mast op${net}${onMast ? '' : ' guessed'}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
+      icon: L.divIcon({ className: `mast op${net ?? 'x'}${kind ? '' : ' guessed'}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
       keyboard: false
-    }).bindTooltip(`${OPERATORS[net] || 'MNC ' + net}, ${tech}<br>seen up to ${range >= 1000 ? (range / 1000).toFixed(1) + ' km' : range + ' m'} away, ${samples} measurements<br>${onMast ? 'at a mapped mast' : 'placed where it was seen from, the mast itself is unmapped'}`).addTo(mastLayer);
+    }).bindTooltip(`${where}, ${who}${tech ? ', ' + tech : ''}${seen}`).addTo(mastLayer);
   }
+}
+// The closest mapped mast to the train, with its operators where OpenCelliD knows them.
+function nearestMast() {
+  if (!masts || !lastPos) return;
+  const [la, lo] = lastPos, k = Math.cos(la * Math.PI / 180);
+  let best = null, bd = Infinity;
+  for (const m of masts) {
+    if (!m[6]) continue;
+    const d = ((m[0] - la) * 111320) ** 2 + ((m[1] - lo) * 111320 * k) ** 2;
+    if (d < bd) { bd = d; best = m; }
+  }
+  if (!best) return;
+  const km = Math.sqrt(bd) / 1000, who = best[2].length ? [...new Set(best[2].map(n => OPERATORS[n] || 'MNC ' + n))].join(' and ') : 'operator unknown';
+  const tech = RADIOS.filter(([bit]) => best[5] & bit).map(([, name]) => name).join(', ');
+  $('near-mast').replaceChildren('Nearest mast ', Object.assign(document.createElement('b'), { textContent: km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km` }), `, ${who}${tech ? ', ' + tech : ''}`);
 }
 function setMasts(on) {
   mastsOn = on;
@@ -978,7 +999,7 @@ function handleSample(p) {
     marker.setLatLng(lastPos).addTo(map);
     if (follow) map.panTo(lastPos);
   }
-  if (p.fix) drawRoute();
+  if (p.fix) { drawRoute(); nearestMast(); }
   // Each sample stands for the seconds since the previous one, so slow probes do not under-count offline time.
   p.g = Math.min(30, (p.t - (points.at(-1)?.t ?? p.t - POLL)) / 1000);
   addTrail(points.at(-1), p);
@@ -1051,7 +1072,7 @@ function drawRibbon() {
   const secs = p => p.g ?? POLL / 1000, total = inTrip.reduce((a, p) => a + secs(p), 0);
   const off = inTrip.filter(p => !p.ok).reduce((a, p) => a + secs(p), 0), good = inTrip.filter(p => p.ok && quality(p) === 'good').reduce((a, p) => a + secs(p), 0);
   const tint = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
-  if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`));
+  if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`), ` (${dur(good * 1000)} of this trip)`);
   else $('trip-sum').textContent = '';
   // Each stretch between two stops is scored by its share of good time; a stretch needs a minute of samples to count.
   const stretches = stops.slice(1).map((s, i) => {

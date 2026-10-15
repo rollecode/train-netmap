@@ -1,3 +1,8 @@
+### 1.7.2: 2026-10-15
+
+* Show every mapped mast, with operator data where OpenCelliD has it, and the nearest mast to the train
+* Add the good time of the trip next to its share
+
 ### 1.7.1: 2026-10-15
 
 * Place cell sites on mapped masts where one is near, dim the ones only seen from the road
