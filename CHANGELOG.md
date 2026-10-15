@@ -1,3 +1,10 @@
+### 1.8.0: 2026-10-15
+
+* Ask to export on arrival, with what the saved trips do for the next one
+* Fold trips older than 30 days into the coverage map, warn before storage fills
+* Say whether a forecast comes from your own trips or from Speedtest data
+* End every header line with a full stop
+
 ### 1.7.3: 2026-10-15
 
 * Write clock times with a colon

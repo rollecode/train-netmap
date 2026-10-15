@@ -86,6 +86,8 @@
   #setup form, .overlay form { width: min(560px, 100%); }
   #setup h2, .overlay h2 { margin: 0 0 28px; font-size: 36px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; }
   #alerts-perm { margin: -12px 0 16px; color: var(--muted); }
+  .muted-text { color: var(--muted); max-width: 60ch; }
+  #arrived-sum { margin: -12px 0 16px; font-size: 17px; }
   #alerts-enable[hidden] { display: none; }
   #alerts-perm:empty { display: none; }
   #alerts-perm a { color: var(--fg); }
@@ -231,6 +233,17 @@
   </form>
 </div>
 <div id="toasts" aria-live="polite"></div>
+<div id="arrived" class="overlay" hidden>
+  <form>
+    <h2 id="arrived-title">Arrived</h2>
+    <p id="arrived-sum"></p>
+    <p class="muted-text">This trip's samples are saved in this browser and already sharpen the forecast on this line: the next time you ride it, in either direction, the dead zones come from what was measured here rather than from Speedtest averages, and every further trip adds weight. Keep the page at this address and the data stays; a cleared browser or another computer loses it, so export a copy. The file holds every trip logged so far, and Import on the first screen puts it all back.</p>
+    <div class="submit">
+      <button type="button" class="primary" id="arrived-export">Export trip data</button>
+      <button type="button" id="arrived-close">Done</button>
+    </div>
+  </form>
+</div>
 <div id="alerts" class="overlay" hidden>
   <form>
     <h2>Alerts</h2>
@@ -380,11 +393,38 @@ function addToHex(p) {
   const offPct = Math.round(h.off / h.n * 100);
   h.poly.bindTooltip(`${Math.round(h.n)} s sampled<br><span style="color:${m === null ? COLORS.off : COLORS[quality({ ok: true, rtt: m })]}">${m === null ? 'no answer' : 'median ' + m + ' ms'}</span><br><span style="color:${offPct > 50 ? COLORS.off : offPct > 0 ? COLORS.fair : COLORS.good}">${offPct}% offline</span>`, { sticky: true });
 }
-// Every trip ever logged feeds the coverage map.
-for (let i = 0; i < localStorage.length; i++) {
-  const k = localStorage.key(i);
-  if (k?.startsWith('netmap-2')) (store.get(k) || []).forEach(addToHex);
+// Every trip ever logged feeds the coverage map. Trips older than 30 days are folded into per-hex totals,
+// so the coverage keeps everything ever measured while the raw samples stop filling the browser's storage.
+const ARCHIVE_AFTER = 30 * 86400000;
+const archive = store.get('netmap-archive') || {};
+for (const k of Object.keys(localStorage)) {
+  if (!k.startsWith('netmap-2')) continue;
+  const date = Date.parse(k.slice(7, 17));
+  if (Date.now() - date < ARCHIVE_AFTER) continue;
+  for (const p of store.get(k) || []) {
+    if (!p.lat) continue;
+    const [q, r] = hexOf(p.lat, p.lon), key = q + ',' + r, a = archive[key] || (archive[key] = [0, 0, 0, 0]);
+    const w = p.g ?? POLL / 1000;
+    a[0] += w;
+    if (p.ok) { a[2] += p.v === 2 ? p.rtt : Math.max(20, p.rtt - 150); a[3]++; } else a[1] += w;
+  }
+  localStorage.removeItem(k);
+  store.set('netmap-archive', archive);
 }
+for (const [key, [n, off, rttSum, rttN]] of Object.entries(archive)) {
+  const [q, r] = key.split(',').map(Number);
+  let h = hexes.get(key);
+  if (!h) { h = { n: 0, off: 0, rtts: [], poly: L.polygon(hexPolygon(q, r), { stroke: false }).addTo(hexLayer) }; hexes.set(key, h); }
+  h.n += n; h.off += off;
+  // The archive keeps a mean per hex; it enters the median as many times as it has minutes behind it.
+  if (rttN) for (let i = 0; i < Math.max(1, Math.min(20, Math.round(n / 60))); i++) h.rtts.push(Math.round(rttSum / rttN));
+  const m = h.rtts.length ? median(h.rtts) : null;
+  h.poly.setStyle({ fillColor: COLORS[h.off / h.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m })], fillOpacity: .18 + Math.min(h.n, 120) / 120 * .37 });
+}
+for (const k of Object.keys(localStorage)) if (k.startsWith('netmap-2')) (store.get(k) || []).forEach(addToHex);
+// Storage is a few megabytes; a warning well before it fills beats a silent failure.
+const used = Object.keys(localStorage).reduce((a, k) => a + (localStorage.getItem(k)?.length || 0), 0);
+if (used > 3500000) $('notice').textContent = `Browser storage is ${Math.round(used / 50000)}% full. Export your data; trips older than 30 days are folded into the coverage map automatically.`;
 
 // ---------- stations ----------
 let stations = store.get('netmap-stations-v2') || [];
@@ -569,7 +609,7 @@ function nearestMast() {
   if (!best) return;
   const km = Math.sqrt(bd) / 1000, who = best[2].length ? [...new Set(best[2].map(n => OPERATORS[n] || 'MNC ' + n))].join(' and ') : 'operator unknown';
   const tech = RADIOS.filter(([bit]) => best[5] & bit).map(([, name]) => name).join(', ');
-  $('near-mast').replaceChildren('Nearest mast ', Object.assign(document.createElement('b'), { textContent: km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km` }), `, ${who}${tech ? ', ' + tech : ''}`);
+  $('near-mast').replaceChildren('Nearest mast ', Object.assign(document.createElement('b'), { textContent: km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km` }), `, ${who}${tech ? ', ' + tech : ''}.`);
 }
 function setMasts(on) {
   mastsOn = on;
@@ -744,6 +784,8 @@ function forecast() {
   const span = m => `${mins(m)}, ${Math.round(m / 1000)} km`;
   const ahead = path.map(p => ({ ...p, c: coverageAt(p.lat, p.lon) }));
   const known = ahead.filter(p => p.c);
+  // Own hexes, from this and earlier trips, outrank the Speedtest baseline wherever they exist.
+  const ownAhead = known.filter(p => { const [q, r] = hexOf(p.lat, p.lon); return NEIGHBOURS.some(([dq, dr]) => (hexes.get((q + dq) + ',' + (r + dr))?.n || 0) >= 10); }).length > known.length / 2;
   // Hexes from this trip only reach a couple of km ahead; a real forecast needs earlier trips on the line.
   const now = Date.now(), reach = known.length ? known.at(-1).d : 0;
   if (reach < 5000) {
@@ -761,7 +803,7 @@ function forecast() {
   if (cur === 'off') {
     const back = known.find(p => p.d >= 500 && RANK[p.c] >= RANK.poor);
     if (!back) return say('No coverage logged for the next ', span(path.at(-1).d), '.');
-    say('Connection should be back in ', mins(back.d), '.');
+    say('Connection should be back in ', mins(back.d), ownAhead ? ', going by your earlier trips.' : ', going by Speedtest data.');
     notify('eta-back', 'Connection expected back', `In ${mins(back.d)}, based on earlier trips.`, 600000);
     return;
   }
@@ -771,7 +813,7 @@ function forecast() {
     let j = i;
     while (ahead[j + 1] && ahead[j + 1].c !== null && ahead[j + 1].c === 'off') j++;
     const length = ahead[j].d - ahead[i].d + 500;
-    say('Dead zone in ', mins(ahead[i].d), `, lasting ${mins(length)}.`);
+    say('Dead zone in ', mins(ahead[i].d), `, lasting ${mins(length)}${ownAhead ? ', measured on your earlier trips' : ', from Speedtest data'}.`);
     const inMin = ahead[i].d / (kmh * 1000 / 60);
     if (inMin <= 1) notify('drop-soon', 'Dead zone in under a minute', `Lasts ${mins(length)}. Save your work.`, 600000);
     else if (inMin <= 3) notify('drop', 'Dead zone ahead', `Starts in ${mins(ahead[i].d)} and lasts ${mins(length)}.`, 600000);
@@ -784,7 +826,7 @@ function forecast() {
       return say('Faster connection in ', mins(faster.d), '.');
     }
   }
-  say('Coverage data shows a steady connection for the next ', span(reach), '.');
+  say(`${ownAhead ? 'Your earlier trips show' : 'Speedtest data shows'} a steady connection for the next `, span(reach), '.');
 }
 
 function watchSpeedUp(p) {
@@ -1039,8 +1081,18 @@ function render() {
     const s = Math.floor(left / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
     const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
     const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(', ');
-    $('arrive').replaceChildren(`Arriving in ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }));
-  } else $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}` : '';
+    $('arrive').replaceChildren(`Arriving in ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }), '.');
+  } else {
+    $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}.` : '';
+    if (dest && points.length > 20 && !trip.arrived) {
+      trip.arrived = true;
+      store.set('netmap-trip', trip);
+      $('arrived-title').textContent = `Arrived in ${dest.name}`;
+      $('arrived-sum').replaceChildren(...Array.from($('trip-sum').childNodes).map(n => n.cloneNode(true)));
+      $('arrived').hidden = false;
+      notify('arrived', `Arrived in ${dest.name}`, 'Trip saved in this browser. Export a copy to keep it safe.', 3600000);
+    }
+  }
   const last = points.at(-1);
   setFavicon(online === null ? 'off' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
   const bw = $('down').textContent;
@@ -1073,7 +1125,7 @@ function drawRibbon() {
   const secs = p => p.g ?? POLL / 1000, total = inTrip.reduce((a, p) => a + secs(p), 0);
   const off = inTrip.filter(p => !p.ok).reduce((a, p) => a + secs(p), 0), good = inTrip.filter(p => p.ok && quality(p) === 'good').reduce((a, p) => a + secs(p), 0);
   const tint = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
-  if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`), ` (${dur(good * 1000)} of this trip)`);
+  if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`), ` (${dur(good * 1000)} of this trip).`);
   else $('trip-sum').textContent = '';
   // Each stretch between two stops is scored by its share of good time; a stretch needs a minute of samples to count.
   const stretches = stops.slice(1).map((s, i) => {
@@ -1173,8 +1225,8 @@ $('whole').onclick = () => {
 };
 $('setup-cancel').onclick = () => { $('setup').hidden = true; };
 // Esc and a click on the dimmed backdrop close the panels; the trip form stays when there is no trip yet.
-addEventListener('keydown', e => { if (e.key === 'Escape') { $('alerts').hidden = true; if (trip) $('setup').hidden = true; } });
-for (const id of ['setup', 'alerts']) $(id).addEventListener('click', e => { if (e.target === $(id) && (id === 'alerts' || trip)) $(id).hidden = true; });
+addEventListener('keydown', e => { if (e.key === 'Escape') { $('alerts').hidden = true; $('arrived').hidden = true; if (trip) $('setup').hidden = true; } });
+for (const id of ['setup', 'alerts', 'arrived']) $(id).addEventListener('click', e => { if (e.target === $(id) && (id !== 'setup' || trip)) $(id).hidden = true; });
 $('setup').querySelector('form').onsubmit = async e => {
   e.preventDefault();
   const btn = e.submitter, msg = $('setup-msg');
@@ -1256,6 +1308,8 @@ $('export').onclick = () => {
   a.click();
 };
 $('import').onclick = () => $('import-file').click();
+$('arrived-export').onclick = () => { $('export').click(); $('arrived').hidden = true; };
+$('arrived-close').onclick = () => { $('arrived').hidden = true; };
 $('setup-import').onclick = () => $('import-file').click();
 $('import-file').onchange = async e => {
   const file = e.target.files[0];
