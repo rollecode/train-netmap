@@ -4,7 +4,7 @@
 
 An **offline-first single html-file page** that follows your train across Finland and records how good the mobile connection is along the way, so the next trip on the same line can tell you when the connection comes back.
 
-<img width="1661" height="1037" alt="image" src="https://github.com/user-attachments/assets/5dea2fa3-98c6-43e5-b420-49b38d51ce43" />
+<img width="1633" height="1039" alt="image" src="https://github.com/user-attachments/assets/a7f2c9c4-8e4b-4ea0-bf77-493b3ae3eed6" />
 
 ## Quick start
 
