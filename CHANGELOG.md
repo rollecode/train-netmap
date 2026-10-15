@@ -1,6 +1,7 @@
 ### 1.7.3: 2026-10-15
 
 * Write clock times with a colon
+* Fade the masts and their beacons
 
 ### 1.7.2: 2026-10-15
 
