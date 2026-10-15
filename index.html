@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Train netmap</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%234cc38a' opacity='.35'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23eef3f6' stroke='%230d1b26' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
@@ -32,7 +33,9 @@
   .readings { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 28px; color: var(--muted); }
   #forecast { margin: 12px 0 0; font-size: 15px; color: var(--muted); }
   #forecast:empty { display: none; }
-  #notice { margin: 12px 0 0; color: var(--fair); }
+  #notice { margin: 12px 0 0; color: var(--fair); max-width: 60ch; }
+  #notice a { color: var(--fg); }
+  #notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   #notice:empty { display: none; }
   #trip-sum { color: var(--muted); }
   [data-zoom="far"] .stop-label:not(.end):not(.next) { display: none; }
@@ -190,7 +193,9 @@ const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { $('notice').textContent = 'Browser storage is full, so new samples are not being saved. Export your data.'; } },
 };
-const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout(ms), cache: 'no-store' })
+// Digitraffic grants a higher request rate when the app names itself.
+const DT_HEADERS = { 'Digitraffic-User': 'train-netmap' };
+const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout(ms), cache: 'no-store', headers: DT_HEADERS })
   .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)));
 const when = r => Date.parse(r.actualTime || r.liveEstimateTime || r.scheduledTime);
 const hhmm = t => new Date(t).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
@@ -600,7 +605,7 @@ async function tick() {
   if (p.ok && p.t - locAt >= LOCATION_EVERY && p.t >= locPausedUntil) {
     locAt = p.t;
     try {
-      const r = await fetch(`${API}/train-locations/latest/${trip.train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+      const r = await fetch(`${API}/train-locations/latest/${trip.train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: DT_HEADERS });
       if (r.status === 429) locPausedUntil = p.t + 60000;
       const [loc] = r.ok ? await r.json() : [];
       if (loc) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
@@ -819,7 +824,7 @@ addEventListener('offline', () => setState(false));
 addEventListener('online', tick);
 addEventListener('resize', drawRibbon);
 
-$('notice').textContent = CARTO_KEY ? '' : 'The map background is off. Copy config.example.js to config.js and add a CARTO key.';
+if (!CARTO_KEY) $('notice').innerHTML = 'Everything works, but the map background needs a free key. Get one at <a href="https://carto.com/basemaps" target="_blank" rel="noopener">carto.com/basemaps</a>, copy <code>config.example.js</code> to <code>config.js</code> next to this file, paste the key in, and reload.';
 navigator.storage?.persist?.()?.catch(() => {});
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
 syncNotify();
