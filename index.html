@@ -259,7 +259,7 @@ const dur = ms => {
   const s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60);
   // Hours are spelled out, minutes and seconds are glued shorthand, units separated by commas: "1 hour, 10min, 5s".
   const h = Math.floor(m / 60);
-  return [h ? hours(h) : '', m % 60 || h ? `${m % 60}min` : '', h ? '' : `${s % 60}s`].filter(Boolean).join(', ');
+  return [h ? hours(h) : '', m % 60 ? `${m % 60}min` : '', !h && s % 60 ? `${s % 60}s` : ''].filter(Boolean).join(', ') || '0s';
 };
 // Chrome caps navigator.connection.downlink at 10 Mbps.
 const mbps = d => d >= 100 ? `${Math.round(d)} Mbps` : d >= 10 ? `${Math.round(d)} Mbps` : `${d.toFixed(1)} Mbps`;
