@@ -1,3 +1,9 @@
+### 1.3.2: 2026-10-15
+
+* Colour the figures in the hexagon tooltip
+* Repaint the tab icon at once, show the bandwidth estimate in the title
+* Take one sample at a time in the worker
+
 ### 1.3.1: 2026-10-15
 
 * Keep measuring, the tab icon and alerts running while the tab is hidden
