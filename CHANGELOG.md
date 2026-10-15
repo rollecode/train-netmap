@@ -1,3 +1,7 @@
+### 1.4.5: 2026-10-15
+
+* Round the buttons into pills
+
 ### 1.4.4: 2026-10-15
 
 * Offer Import data on the first screen, and resume the imported trip
