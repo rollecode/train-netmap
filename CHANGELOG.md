@@ -1,3 +1,7 @@
+### 1.2.2: 2026-10-15
+
+* Put the offline and good figures on their own line
+
 ### 1.2.1: 2026-10-15
 
 * Tint offline time red and good share green, spell out the arrival countdown on one line
