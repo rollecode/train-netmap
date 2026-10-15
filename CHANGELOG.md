@@ -1,3 +1,7 @@
+### 1.5.3: 2026-10-15
+
+* Shorten the alert switch labels
+
 ### 1.5.2: 2026-10-15
 
 * Name the best and worst stretch of the trip, with weak and offline shares

@@ -215,16 +215,16 @@
     <p id="alerts-perm"></p>
     <p><button type="button" class="primary" id="alerts-enable">Enable system notifications</button></p>
     <div class="checks">
-      <label><input type="checkbox" data-kind="deadzone" checked> Dead zone ahead, 3 minutes and 1 minute before</label>
+      <label><input type="checkbox" data-kind="deadzone" checked> Dead zone ahead</label>
       <label><input type="checkbox" data-kind="offline" checked> Connection dropped</label>
-      <label><input type="checkbox" data-kind="back" checked> Connection expected back, and back</label>
-      <label><input type="checkbox" data-kind="slow" checked> Connection slow for half a minute</label>
-      <label><input type="checkbox" data-kind="faster" checked> Connection faster, or faster coverage 2 minutes ahead</label>
-      <label><input type="checkbox" data-kind="bandwidth" checked> Bandwidth under 1 Mbps, or back above 20</label>
-      <label><input type="checkbox" data-kind="stop" checked> Next stop 2 minutes out</label>
-      <label><input type="checkbox" data-kind="arrive" checked> Destination 10 and 2 minutes out</label>
-      <label><input type="checkbox" data-kind="delay" checked> Delay changes by 3 minutes or more</label>
-      <label><input type="checkbox" data-kind="sound" checked> Play a tone with every alert</label>
+      <label><input type="checkbox" data-kind="back" checked> Connection back</label>
+      <label><input type="checkbox" data-kind="slow" checked> Connection slow</label>
+      <label><input type="checkbox" data-kind="faster" checked> Connection faster</label>
+      <label><input type="checkbox" data-kind="bandwidth" checked> Bandwidth collapses or recovers</label>
+      <label><input type="checkbox" data-kind="stop" checked> Next stop</label>
+      <label><input type="checkbox" data-kind="arrive" checked> Arrival</label>
+      <label><input type="checkbox" data-kind="delay" checked> Delay changes</label>
+      <label><input type="checkbox" data-kind="sound" checked> Sound</label>
     </div>
     <div class="submit">
       <button type="button" class="primary" id="alerts-test">Send a test alert</button>
