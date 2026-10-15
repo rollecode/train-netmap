@@ -1,3 +1,8 @@
+### 1.3.3: 2026-10-15
+
+* Play the tone, flash the title and write the alert line without notification permission
+* Say in the alerts panel what the browser answered and how to get system banners
+
 ### 1.3.2: 2026-10-15
 
 * Colour the figures in the hexagon tooltip

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Train netmap</title>
-<link id="favicon" rel="icon" href="">
+<link id="favicon" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%235f7180' opacity='.45'/%3E%3Ccircle cx='16' cy='16' r='9' fill='%235f7180'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23eef3f6'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
@@ -468,18 +468,21 @@ function beep(n) {
 // Which alert kinds are on, kept in the browser.
 const GROUP = { drop: 'deadzone', 'drop-soon': 'deadzone', offline: 'offline', 'eta-back': 'back', back: 'back', slower: 'slow', faster: 'faster', 'faster-ahead': 'faster', 'bw-low': 'bandwidth', 'bw-high': 'bandwidth', 'arrive-10': 'arrive', 'arrive-2': 'arrive', delay: 'delay' };
 const alertsOn = Object.assign({ deadzone: true, offline: true, back: true, slow: true, faster: true, bandwidth: true, stop: true, arrive: true, delay: true, sound: true }, store.get('netmap-alerts') || {});
+let titleFlash = '';
 function notify(kind, title, body, gap = 180000) {
   const group = GROUP[kind] || (kind.startsWith('stop-') ? 'stop' : kind);
   if (kind !== 'test' && !alertsOn[group]) return;
-  if (Notification.permission !== 'granted' || Date.now() - (notified[kind] || 0) < gap) return;
+  if (Date.now() - (notified[kind] || 0) < gap) return;
   notified[kind] = Date.now();
-  // Important ones stay on screen until dismissed; a repeat of the same kind replaces the earlier one.
+  // The page's own record, tone and title come first; the system notification is extra and needs permission.
   const sticky = ['drop', 'drop-soon', 'offline', 'back', 'eta-back', 'arrive-2'].includes(kind);
-  try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
-  if (alertsOn.sound) beep(sticky ? 3 : 2);
-  // The page keeps its own record, so a silenced notification is still visible here.
   $('notice').textContent = `Alert ${hhmm(Date.now())}: ${title}. ${body}`;
   setTimeout(() => { if ($('notice').textContent.startsWith('Alert ')) $('notice').textContent = ''; }, 120000);
+  titleFlash = title;
+  setTimeout(() => { if (titleFlash === title) titleFlash = ''; render(); }, 20000);
+  render();
+  if (alertsOn.sound) beep(sticky ? 3 : 2);
+  if (Notification.permission === 'granted') try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
 }
 
 // Speedtest by Ookla open data: a 610 m grid of measured mobile speed for Finland, the baseline wherever own trips have nothing.
@@ -890,7 +893,7 @@ function render() {
   setFavicon(online === null ? 'off' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
   const bw = $('down').textContent;
   const live = [online && /Mbps/.test(bw) ? bw : null, lastKmh != null ? `${lastKmh} km/h` : null].filter(Boolean).join(', ');
-  document.title = online === false ? `Offline ${dur(Date.now() - since)} - Train netmap` : live ? `${live} - Train netmap` : 'Train netmap';
+  document.title = titleFlash ? `${titleFlash} - Train netmap` : online === false ? `Offline ${dur(Date.now() - since)} - Train netmap` : live ? `${live} - Train netmap` : 'Train netmap';
 }
 
 const svg = (tag, attrs, text) => {
@@ -1027,20 +1030,26 @@ $('setup').querySelector('form').onsubmit = async e => {
   }
 };
 
+let permAnswer = '';
 const syncNotify = () => {
-  const perm = Notification.permission, on = perm === 'granted';
+  const perm = Notification.permission, on = perm === 'granted', isFile = location.protocol === 'file:';
   $('notify').textContent = on ? 'Alerts on' : 'Alerts';
   $('notify').setAttribute('aria-pressed', on);
-  $('alerts-perm').innerHTML = on ? '' : perm === 'denied'
-    ? 'Notifications are blocked for this page. Allow them in the browser\'s site settings, then reload.'
-    : 'Notifications are off. <a href="#" id="alerts-allow">Allow them</a> to get alerts outside this tab.';
+  const how = isFile ? ' A page opened from a file usually cannot get them in Chrome; serve the folder with <code>python3 -m http.server 8080</code> and open <code>http://localhost:8080/</code> instead.' : '';
+  $('alerts-perm').innerHTML = on
+    ? 'System notifications are on. The tone and the alert line under the readings work regardless.'
+    : (perm === 'denied'
+      ? `System notifications are blocked for this page.${how} The tone and the alert line under the readings work anyway.`
+      : `System notifications are off. <a href="#" id="alerts-allow">Allow them</a> to get alerts outside this tab.${how} The tone and the alert line under the readings work anyway.`)
+      + (permAnswer ? ` Browser answered: ${permAnswer}.` : '');
   $('alerts-allow')?.addEventListener('click', e => { e.preventDefault(); askPermission(); });
 };
 const unlockAudio = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} };
 const askPermission = () => Notification.requestPermission().then(p => {
+  permAnswer = p;
   syncNotify();
   if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'Dead zones ahead, drops, recoveries, slowdowns, stops, delays and arrival.'); }
-});
+}).catch(e => { permAnswer = e.message; syncNotify(); });
 $('notify').onclick = () => {
   unlockAudio();
   for (const box of $('alerts').querySelectorAll('input[data-kind]')) box.checked = !!alertsOn[box.dataset.kind];
@@ -1055,9 +1064,9 @@ $('alerts').addEventListener('change', e => {
 });
 $('alerts-test').onclick = () => {
   unlockAudio();
-  if (Notification.permission !== 'granted') return askPermission();
+  if (Notification.permission === 'default') askPermission();
   delete notified.test;
-  notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. If you see this, alerts work.`);
+  notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. The tone, the title and the line under the readings are the alert; a system banner comes only with permission.`);
 };
 $('alerts-close').onclick = () => { $('alerts').hidden = true; };
 // Export carries every logged trip, so one file restores the whole coverage map on another browser.
