@@ -1,3 +1,8 @@
+### 1.4.7: 2026-10-15
+
+* Ask for notification permission as soon as the alerts panel opens on localhost
+* Make the test alert button green
+
 ### 1.4.6: 2026-10-15
 
 * Show the import result in green

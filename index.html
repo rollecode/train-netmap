@@ -220,7 +220,7 @@
       <label><input type="checkbox" data-kind="sound" checked> Play a tone with every alert</label>
     </div>
     <div class="submit">
-      <button type="button" id="alerts-test">Send a test alert</button>
+      <button type="button" class="primary" id="alerts-test">Send a test alert</button>
       <button type="button" id="alerts-close">Done</button>
     </div>
     <p id="alerts-last"></p>
@@ -1088,11 +1088,14 @@ const askPermission = () => asked ? Promise.resolve() : (asked = true, Notificat
   syncNotify();
   if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'Dead zones ahead, drops, recoveries, slowdowns, stops, delays and arrival.'); }
 }).catch(e => { permAnswer = e.message; syncNotify(); }));
+// Served over http the grant sticks, so the browser is asked as soon as the panel opens; from a file only the link asks.
+const servedOverHttp = location.protocol.startsWith('http');
 $('notify').onclick = () => {
   unlockAudio();
   for (const box of $('alerts').querySelectorAll('input[data-kind]')) box.checked = !!alertsOn[box.dataset.kind];
   syncNotify();
   $('alerts').hidden = false;
+  if (servedOverHttp && Notification.permission === 'default') askPermission();
 };
 $('alerts').addEventListener('change', e => {
   if (!e.target.dataset.kind) return;
@@ -1101,6 +1104,7 @@ $('alerts').addEventListener('change', e => {
 });
 $('alerts-test').onclick = () => {
   unlockAudio();
+  if (servedOverHttp && Notification.permission === 'default' && !asked) return askPermission();
   delete notified.test;
   notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. The tone, the title and the line under the readings are the alert; a system banner comes only with permission.`);
 };
