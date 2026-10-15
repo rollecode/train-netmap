@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Train netmap</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="config.js"></script>
+<style>
+  :root {
+    --ink: #0d1b26; --ink-2: #142634; --line: #2a3d4d;
+    --fg: #eef3f6; --muted: #93a6b5;
+    --good: #4cc38a; --fair: #e3b341; --poor: #ef6b5b; --off: #5f7180;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--fg); font: 14px/1.45 var(--sans); font-variant-numeric: tabular-nums; }
+  ::selection { background: rgba(76, 195, 138, .35); }
+  :focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; border-radius: 4px; }
+  #map { position: absolute; inset: 0; background: var(--ink); }
+  .leaflet-tile-pane { filter: sepia(1) hue-rotate(165deg) saturate(1.8) brightness(.85); }
+
+  .fade-top { position: absolute; left: 0; right: 0; z-index: 500; pointer-events: none; top: 0; height: 240px; background: linear-gradient(var(--ink) 15%, rgba(13, 27, 38, 0)); }
+
+  #status { position: absolute; top: 28px; left: 32px; right: 320px; z-index: 600; }
+  #status h1 { margin: 0; font-size: 44px; line-height: 1.05; font-weight: 650; letter-spacing: -.02em; display: flex; flex-wrap: wrap; gap: 0 16px; align-items: baseline; }
+  #state { color: var(--muted); transition: color .4s; }
+  [data-state="online"] #state { color: var(--good); }
+  [data-state="offline"] #state { color: var(--poor); }
+  #for { font-weight: 400; color: var(--fg); }
+  .readings { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 28px; color: var(--muted); }
+  #forecast { margin: 12px 0 0; font-size: 15px; color: var(--muted); }
+  #forecast:empty { display: none; }
+  #notice { margin: 12px 0 0; color: var(--fair); }
+  #notice:empty { display: none; }
+  #trip-sum { color: var(--muted); }
+  [data-zoom="far"] .stop-label:not(.end):not(.next) { display: none; }
+  .leaflet-control-scale-line { background: none; border-color: var(--muted); color: var(--muted); font: 11px var(--sans); text-shadow: 0 0 3px var(--ink); }
+  #forecast b { color: var(--fg); font-weight: 600; }
+  .readings b { font-size: 20px; font-weight: 600; color: var(--fg); margin-right: 6px; }
+
+  .controls { position: absolute; top: 28px; right: 32px; z-index: 600; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 60%; }
+  button {
+    font: inherit; color: var(--fg); background: none; border: 0; border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s;
+  }
+  button:hover { background: rgba(238, 243, 246, .08); }
+  button[aria-pressed="true"] { color: var(--good); }
+
+  #trip { position: absolute; left: 32px; right: 32px; bottom: 24px; z-index: 600; }
+  .trip-head { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; align-items: baseline; }
+  #trip-name { font-size: 17px; font-weight: 600; }
+  #trip-name span { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  #trip-eta { color: var(--muted); }
+  #trip-eta b { color: var(--fg); font-weight: 600; }
+  #ribbon { display: block; width: 100%; height: 92px; overflow: visible; }
+  #ribbon text { fill: var(--muted); font: 12px var(--sans); paint-order: stroke; stroke: var(--ink); stroke-width: 4px; stroke-linejoin: round; }
+  #ribbon text.end { fill: var(--fg); font-weight: 600; }
+  #ribbon text.next { fill: var(--fg); }
+
+  .legend { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); margin: 6px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, max-content); gap: 4px 20px; color: var(--muted); font-size: 12px; }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .legend i { width: 18px; height: 6px; border-radius: 3px; }
+
+  #setup { position: absolute; inset: 0; z-index: 900; background: rgba(13, 27, 38, .9); display: grid; place-items: center; padding: 24px; }
+  #setup[hidden] { display: none; }
+  #setup form { width: min(560px, 100%); }
+  #setup h2 { margin: 0 0 28px; font-size: 36px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; }
+  .fields label { display: grid; gap: 6px; color: var(--muted); }
+  .fields .wide { grid-column: 1 / -1; }
+  input {
+    font: inherit; font-size: 20px; color: var(--fg); background: transparent; width: 100%;
+    border: 0; border-bottom: 2px solid var(--line); padding: 6px 0; border-radius: 0; transition: border-color .15s;
+  }
+  input:focus { outline: none; border-color: var(--good); }
+  .submit { margin-top: 32px; display: flex; gap: 12px; align-items: center; }
+  .primary { background: var(--good); color: var(--ink); font-weight: 600; padding: 10px 18px; }
+  .primary:hover { background: #63d29c; }
+  .primary:disabled { background: var(--line); color: var(--muted); cursor: progress; }
+  #setup-msg { margin: 20px 0 0; min-height: 1.45em; color: var(--poor); }
+
+  .leaflet-container { font: 12px/1.4 var(--sans); background: var(--ink); }
+  .leaflet-bar { border: 0 !important; box-shadow: none !important; }
+  .leaflet-bar a { background: var(--ink-2); color: var(--fg); border-bottom-color: var(--line); }
+  .leaflet-bar a:hover { background: var(--line); color: var(--fg); }
+  .leaflet-control-attribution { background: none !important; color: var(--muted); }
+  .leaflet-control-attribution a { color: var(--fg); }
+  .leaflet-tooltip { background: var(--ink-2); color: var(--fg); border: 0; border-radius: 6px; box-shadow: none; padding: 6px 10px; }
+  .leaflet-tooltip::before { display: none; }
+  .leaflet-tooltip.stop-label { background: none; padding: 0 0 0 4px; color: var(--muted); font-size: 12px; text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); }
+  .leaflet-tooltip.stop-label.end, .leaflet-tooltip.stop-label.next { color: var(--fg); font-weight: 600; }
+  .leaflet-tooltip.stop-label.passed { opacity: .6; }
+  .leaflet-tooltip.stop-label.covered { display: none; }
+
+  @media (max-width: 720px) {
+    #status { left: 16px; right: 16px; top: 96px; }
+    #status h1 { font-size: 34px; }
+    .readings { display: grid; grid-template-columns: 1fr 1fr; }
+    .controls { top: 12px; left: 8px; right: 8px; max-width: none; }
+    #trip { left: 16px; right: 16px; bottom: 20px; }
+    .legend { grid-template-columns: repeat(2, max-content); }
+    .fields { grid-template-columns: 1fr; }
+  }
+  .you { --ring: var(--muted); }
+  [data-state="online"] .you { --ring: var(--good); }
+  [data-state="offline"] .you { --ring: var(--poor); }
+  .you i, .you b { position: absolute; inset: 0; border-radius: 50%; }
+  .you b { background: var(--fg); border: 3px solid var(--ink); box-shadow: 0 0 0 2px var(--ring); }
+  .you i { background: var(--ring); animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
+  .ribbon-pulse { fill: var(--good); transform-box: fill-box; transform-origin: center; animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
+  [data-state="offline"] .ribbon-pulse { fill: var(--poor); }
+  [data-state="connecting"] .ribbon-pulse { fill: var(--muted); }
+  @keyframes pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(3.2); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+    .you i, .ribbon-pulse { animation: none; opacity: .35; transform: scale(1.8); }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="fade-top"></div>
+
+<header id="status" data-state="connecting">
+  <h1><span id="state">Connecting</span><span id="for"></span></h1>
+  <ul class="readings">
+    <li><b id="rtt">-</b>latency</li>
+    <li><b id="down">-</b>bandwidth</li>
+    <li><b id="speed">-</b>train speed</li>
+    <li><b id="outages">0</b>outages</li>
+  </ul>
+  <p id="forecast"></p>
+  <p id="notice"></p>
+</header>
+
+<nav class="controls">
+  <button id="follow" aria-pressed="true">Follow train</button>
+  <button id="whole">Whole route</button>
+  <button id="trip-btn">Change trip</button>
+  <button id="notify" aria-pressed="false">Turn on alerts</button>
+  <button id="export">Export data</button>
+  <button id="import">Import data</button>
+  <input type="file" id="import-file" accept=".json,application/json" hidden>
+</nav>
+
+<section id="trip" hidden>
+  <div class="trip-head">
+    <div id="trip-name"></div>
+    <div id="trip-sum"></div>
+    <div id="trip-eta"></div>
+  </div>
+  <svg id="ribbon" role="img" aria-label="Connection quality along the trip"></svg>
+  <ul class="legend">
+    <li><i style="background:var(--good)"></i>under 150 ms</li>
+    <li><i style="background:var(--fair)"></i>150 to 400 ms</li>
+    <li><i style="background:var(--poor)"></i>over 400 ms</li>
+    <li><i style="background:var(--off)"></i>offline</li>
+  </ul>
+</section>
+
+<div id="setup" hidden>
+  <form>
+    <h2>Where are you travelling?</h2>
+    <div class="fields">
+      <label>From<input id="from" list="stations" placeholder="Like Pieksämäki" autocomplete="off" required></label>
+      <label>To<input id="to" list="stations" placeholder="Like Oulu" autocomplete="off" required></label>
+      <label class="wide">Train<input id="train-no" list="trains" placeholder="Filled in from the stations, or type one like IC 63" autocomplete="off"></label>
+    </div>
+    <div class="submit">
+      <button class="primary" type="submit">Track trip</button>
+      <button type="button" id="setup-cancel">Cancel</button>
+    </div>
+    <p id="setup-msg" role="alert"></p>
+  </form>
+</div>
+<datalist id="stations"></datalist>
+<datalist id="trains"></datalist>
+
+<script>
+const API = 'https://rata.digitraffic.fi/api/v1';
+const CARTO_KEY = window.NETMAP_CONFIG?.cartoKey || '';
+const POLL = 5000, LOCATION_EVERY = 15000;
+const PROBE = 'https://cp.cloudflare.com/generate_204';
+let locAt = 0, locPausedUntil = 0;
+const COLORS = { good: '#4cc38a', fair: '#e3b341', poor: '#ef6b5b', off: '#5f7180' };
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { $('notice').textContent = 'Browser storage is full, so new samples are not being saved. Export your data.'; } },
+};
+const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout(ms), cache: 'no-store' })
+  .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)));
+const when = r => Date.parse(r.actualTime || r.liveEstimateTime || r.scheduledTime);
+const hhmm = t => new Date(t).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+const dur = ms => {
+  const s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60);
+  return s < 60 ? `${s}s` : m < 60 ? `${m}min ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}min`;
+};
+// Chrome caps navigator.connection.downlink at 10 Mbps.
+const mbps = d => d >= 100 ? `${Math.round(d)} Mbps` : d >= 10 ? `${Math.round(d)} Mbps` : `${d.toFixed(1)} Mbps`;
+// A 2 MB download every couple of minutes measures real throughput; Chrome's own estimate stops at 10 Mbps.
+const SPEED_URL = 'https://speed.cloudflare.com/__down?bytes=2000000', SPEED_EVERY = 120000;
+let speedAt = 0, measured = null;
+async function measureSpeed() {
+  speedAt = Date.now();
+  const t0 = performance.now();
+  try {
+    const r = await fetch(SPEED_URL, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    const bytes = (await r.arrayBuffer()).byteLength;
+    measured = bytes * 8 / 1e6 / ((performance.now() - t0) / 1000);
+  } catch { measured = null; }
+  return measured;
+}
+// Bands for a warm connection to a nearby edge: calls and SSH are fine under 150 ms, browsing drags past 400 ms.
+const quality = p => !p.ok ? 'off' : p.rtt < 150 ? 'good' : p.rtt < 400 ? 'fair' : 'poor';
+const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+
+// ---------- map ----------
+const map = L.map('map', { zoomControl: false }).setView([63.2, 27.2], 8);
+const tiles = L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
+  maxZoom: 19,
+  attribution: 'Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>, trains © <a href="https://www.digitraffic.fi">Fintraffic</a> CC BY 4.0'
+});
+if (CARTO_KEY) tiles.addTo(map);
+const hexLayer = L.layerGroup().addTo(map);
+const trailLayer = L.layerGroup().addTo(map);
+function addTrail(prev, p) {
+  if (!prev?.lat || !p.lat || (prev.lat === p.lat && prev.lon === p.lon)) return;
+  L.polyline([[prev.lat, prev.lon], [p.lat, p.lon]], { color: COLORS[quality(p)], weight: 3, opacity: .85, interactive: false, lineCap: 'round' }).addTo(trailLayer);
+}
+L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+map.on('zoomend', () => { document.body.dataset.zoom = map.getZoom() < 8 ? 'far' : ''; });
+// Stop names that would sit under the route line at the bottom are hidden rather than overprinted.
+function hideCoveredLabels() {
+  const top = $('trip').hidden ? Infinity : $('trip').getBoundingClientRect().top - 12;
+  routeLayer.eachLayer(l => {
+    const el = l.getTooltip?.()?.getElement();
+    if (el) el.classList.toggle('covered', map.latLngToContainerPoint(l.getLatLng()).y > top);
+  });
+}
+map.on('move', hideCoveredLabels);
+const marker = L.marker([0, 0], {
+  icon: L.divIcon({ className: 'you', html: '<i></i><b></b>', iconSize: [20, 20] }),
+  interactive: false, keyboard: false, zIndexOffset: 1000
+});
+const routeLayer = L.layerGroup().addTo(map);
+let follow = true;
+function setFollow(on) {
+  follow = on;
+  $('follow').setAttribute('aria-pressed', on);
+  if (on && lastPos) map.setView(lastPos, Math.max(map.getZoom(), 10));
+}
+map.on('dragstart', () => setFollow(false));
+
+// Hexagons are sized in Web Mercator metres; 2600 is about 1.2 km across at 62-65 degrees north.
+const HEX = 2600, crs = L.CRS.EPSG3857;
+const hexes = new Map();
+function hexOf(lat, lon) {
+  const p = crs.project(L.latLng(lat, lon));
+  let q = (Math.sqrt(3) / 3 * p.x - p.y / 3) / HEX, r = (2 / 3 * p.y) / HEX, s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs; else if (dr > ds) rr = -rq - rs;
+  return [rq, rr];
+}
+function hexPolygon(q, r) {
+  const cx = HEX * Math.sqrt(3) * (q + r / 2), cy = HEX * 1.5 * r;
+  return [0, 1, 2, 3, 4, 5].map(i => {
+    const a = Math.PI / 180 * (60 * i - 30);
+    return crs.unproject(L.point(cx + HEX * Math.cos(a), cy + HEX * Math.sin(a)));
+  });
+}
+function addToHex(p) {
+  if (!p.lat) return;
+  const [q, r] = hexOf(p.lat, p.lon), k = q + ',' + r;
+  let h = hexes.get(k);
+  if (!h) {
+    h = { n: 0, off: 0, rtts: [], poly: L.polygon(hexPolygon(q, r), { stroke: false }).addTo(hexLayer) };
+    hexes.set(k, h);
+  }
+  h.n++;
+  // v1 samples timed a Digitraffic API call, roughly 150 ms heavier than today's edge probe.
+  if (p.ok) h.rtts.push(p.v === 2 ? p.rtt : Math.max(20, p.rtt - 150)); else h.off++;
+  const m = h.rtts.length ? median(h.rtts) : null;
+  const q8 = h.off / h.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m });
+  // More samples, more opaque: a single reading should not look like settled coverage.
+  h.poly.setStyle({ fillColor: COLORS[q8], fillOpacity: .18 + Math.min(h.n, 24) / 24 * .37 });
+  h.poly.bindTooltip(`${h.n} samples<br>${m === null ? 'no answer' : 'median ' + m + ' ms'}<br>${Math.round(h.off / h.n * 100)}% offline`, { sticky: true });
+}
+// Every trip ever logged feeds the coverage map.
+for (let i = 0; i < localStorage.length; i++) {
+  const k = localStorage.key(i);
+  if (k?.startsWith('netmap-2')) (store.get(k) || []).forEach(addToHex);
+}
+
+// ---------- stations ----------
+let stations = store.get('netmap-stations-v2') || [];
+const stationName = code => stations.find(s => s.code === code)?.name || code;
+const stationCode = text => {
+  const t = text.trim().toLowerCase();
+  return stations.find(s => s.name.toLowerCase() === t || s.code.toLowerCase() === t)?.code;
+};
+function fillStations() {
+  $('stations').replaceChildren(...stations.map(s => Object.assign(document.createElement('option'), { value: s.name })));
+}
+async function loadStations() {
+  if (stations.length) return fillStations();
+  const all = await get('/metadata/stations', 20000);
+  stations = all.filter(s => s.passengerTraffic && s.countryCode === 'FI')
+    .map(s => ({ code: s.stationShortCode, name: s.stationName.replace(/ asema$/, ''), lat: s.latitude, lon: s.longitude }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fi'));
+  store.set('netmap-stations-v2', stations);
+  fillStations();
+}
+
+// ---------- trip ----------
+const params = new URLSearchParams(location.search);
+const today = new Date().toISOString().slice(0, 10);
+// "IC 63", "IC63" and "63" all mean train 63.
+const trainNo = v => String(v ?? '').match(/\d+/)?.[0];
+const lastTrip = store.get('netmap-trip');
+let trip = lastTrip?.date === today && trainNo(lastTrip.train) ? { ...lastTrip, train: trainNo(lastTrip.train) } : null;
+if (trainNo(params.get('train'))) trip = { train: trainNo(params.get('train')), from: params.get('from'), to: params.get('to'), date: today };
+let stops = [], timetableAt = 0, trainLabel = '', track = [], trackEnd = Infinity;
+const pointsKey = () => `netmap-${trip.date}-${trip.train}`;
+const stopsKey = () => `netmap-stops-${trip.date}-${trip.train}`;
+const trackKey = () => `netmap-track-${trip.train}`;
+
+async function findTrains(from, to) {
+  const board = await get(`/live-trains/station/${from}?arrived_trains=0&arriving_trains=0&departed_trains=20&departing_trains=20&include_nonstopping=false`, 20000);
+  const now = Date.now();
+  const options = board.map(t => {
+    const rows = t.timeTableRows;
+    const di = rows.findIndex(r => r.stationShortCode === from && r.type === 'DEPARTURE');
+    const ai = rows.findIndex((r, i) => i > di && r.stationShortCode === to && r.type === 'ARRIVAL');
+    return di >= 0 && ai >= 0 && { t, dep: when(rows[di]), arr: when(rows[ai]), label: `${t.trainType} ${t.trainNumber}` };
+  }).filter(Boolean);
+  // Prefer the train that is between the two stations right now, then the nearest departure.
+  options.sort((a, b) => score(a) - score(b));
+  function score(o) { return now >= o.dep && now <= o.arr ? 0 : Math.abs(now - o.dep); }
+  return options;
+}
+
+async function loadTimetable() {
+  const [t] = await get(`/trains/${trip.date}/${trip.train}`, 15000);
+  if (!t) {
+    stops = [];
+    timetableAt = Date.now();
+    $('trip-name').textContent = `Train ${trip.train} is not in today's timetable. Use Change trip to pick another.`;
+    $('trip-eta').textContent = '';
+    return;
+  }
+  trainLabel = t.commuterLineID ? `${t.commuterLineID} train` : `${t.trainType} ${t.trainNumber}`;
+  const rows = t.timeTableRows.filter(r => r.trainStopping && r.commercialStop);
+  const codes = [...new Set(rows.map(r => r.stationShortCode))];
+  const from = trip.from && codes.includes(trip.from) ? trip.from : codes[0];
+  const to = trip.to && codes.includes(trip.to) ? trip.to : codes.at(-1);
+  const seq = codes.slice(codes.indexOf(from), codes.indexOf(to) + 1);
+  stops = seq.map((code, i) => {
+    const arr = rows.find(r => r.stationShortCode === code && r.type === 'ARRIVAL');
+    const dep = rows.find(r => r.stationShortCode === code && r.type === 'DEPARTURE');
+    const row = i === 0 ? dep : arr;
+    return { code, name: stationName(code), t: when(row), late: row.differenceInMinutes || 0, passed: !!row.actualTime };
+  });
+  timetableAt = Date.now();
+  store.set(stopsKey(), stops);
+  drawRoute();
+}
+
+// ---------- track ----------
+// The same train number runs the same line every day, so its GPS trail from an earlier day is the real track geometry.
+async function loadTrack() {
+  if (track.length) return;
+  for (let back = 1; back <= 7; back++) {
+    const d = new Date(Date.now() - back * 86400000).toISOString().slice(0, 10);
+    const pts = await get(`/train-locations/${d}/${trip.train}`, 30000).catch(() => []);
+    if (pts.length < 50) continue;
+    pts.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    track = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
+    store.set(trackKey(), { date: d, pts: track });
+    drawRoute();
+    return;
+  }
+}
+function trackIndexNear(pos) {
+  let best = 0, bd = Infinity;
+  const [la, lo] = pos, k = Math.cos(la * Math.PI / 180);
+  track.forEach(([a, b], i) => { const d = (a - la) ** 2 + ((b - lo) * k) ** 2; if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+
+// ---------- forecast ----------
+// Coverage ahead comes from earlier trips' hexes, so the first trip on a line has nothing to go on.
+let speeds = [], poorSince = null, notified = {}, prefetched = new Set();
+const RANK = { off: 0, poor: 1, fair: 2, good: 3 };
+const NEIGHBOURS = [[0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+
+function notify(kind, title, body, gap = 180000) {
+  if (Notification.permission !== 'granted' || Date.now() - (notified[kind] || 0) < gap) return;
+  notified[kind] = Date.now();
+  new Notification(title, { body });
+}
+
+// The track can run a kilometre or two off the straight line between stops, so look at the surrounding ring of hexes too.
+function coverageAt(lat, lon) {
+  const [q, r] = hexOf(lat, lon);
+  let best = null;
+  for (const [dq, dr] of NEIGHBOURS) {
+    const h = hexes.get((q + dq) + ',' + (r + dr));
+    if (h && h.n >= 2 && (!best || h.n > best.n)) best = h;
+  }
+  if (!best) return null;
+  const m = best.rtts.length ? median(best.rtts) : null;
+  return best.off / best.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m });
+}
+
+function aheadPath(step = 500, max = 60000, from = lastPos) {
+  if (!from) return [];
+  const out = [];
+  if (track.length) {
+    let d = 0, nextAt = 0, prev = L.latLng(from);
+    for (let i = trackIndexNear(from); i < Math.min(track.length, trackEnd) && d < max; i++) {
+      const cur = L.latLng(track[i]), len = prev.distanceTo(cur);
+      while (nextAt <= d + len && nextAt < max) {
+        const f = len ? (nextAt - d) / len : 0;
+        out.push({ lat: prev.lat + (cur.lat - prev.lat) * f, lon: prev.lng + (cur.lng - prev.lng) * f, d: nextAt });
+        nextAt += step;
+      }
+      d += len; prev = cur;
+    }
+    return out;
+  }
+  const now = Date.now();
+  const coords = stops.filter(s => s.t > now).map(s => stations.find(x => x.code === s.code)).filter(Boolean).map(s => L.latLng(s.lat, s.lon));
+  if (!coords.length) return [];
+  const line = [L.latLng(from), ...coords];
+  let d = 0;
+  for (let i = 1; i < line.length && d < max; i++) {
+    const a = line[i - 1], b = line[i], len = a.distanceTo(b);
+    for (let t = 0; t < len && d + t < max; t += step) {
+      const f = t / len;
+      out.push({ lat: a.lat + (b.lat - a.lat) * f, lon: a.lng + (b.lng - a.lng) * f, d: d + t });
+    }
+    d += len;
+  }
+  return out;
+}
+
+function forecast() {
+  const el = $('forecast');
+  const path = aheadPath();
+  if (!path.length) { el.textContent = ''; return; }
+  const kmh = speeds.length ? median(speeds) : 90;
+  const mins = m => { const v = m / (kmh * 1000 / 60); return v < 1 ? 'under a minute' : `about ${Math.round(v)} min`; };
+  const ahead = path.map(p => ({ ...p, c: coverageAt(p.lat, p.lon) }));
+  const known = ahead.filter(p => p.c);
+  // Fewer than 2 km of logged coverage ahead is too thin to forecast from.
+  if (known.length < 4) { el.textContent = 'No earlier trips on this stretch yet, so no forecast.'; return; }
+  const last = points.at(-1), cur = !last?.ok ? 'off' : quality(last);
+  const say = (lead, strong, tail = '') => { el.replaceChildren(lead, Object.assign(document.createElement('b'), { textContent: strong }), tail); };
+
+  if (cur === 'off') {
+    const back = known.find(p => RANK[p.c] >= RANK.poor);
+    if (!back) return say('No coverage logged ahead for the next ', `${Math.round(path.at(-1).d / 1000)} km`, '.');
+    say('Connection should be back in ', mins(back.d), '.');
+    notify('eta-back', 'Connection expected back', `In ${mins(back.d)}, based on earlier trips.`, 600000);
+    return;
+  }
+  // A dead zone is at least two consecutive offline samples, about a kilometre of track.
+  const i = ahead.findIndex((p, k) => p.c === 'off' && ahead[k + 1]?.c === 'off');
+  if (i >= 0 && ahead[i].d < 20000) {
+    let j = i;
+    while (ahead[j + 1] && ahead[j + 1].c !== null && ahead[j + 1].c === 'off') j++;
+    const length = ahead[j].d - ahead[i].d + 500;
+    say('Dead zone in ', mins(ahead[i].d), `, lasting ${mins(length)}.`);
+    if (ahead[i].d / (kmh * 1000 / 60) <= 3) notify('drop', 'Dead zone ahead', `Starts in ${mins(ahead[i].d)} and lasts ${mins(length)}.`, 600000);
+    return;
+  }
+  if (cur === 'poor') {
+    const faster = known.find(p => RANK[p.c] >= RANK.fair);
+    if (faster) return say('Faster connection in ', mins(faster.d), '.');
+  }
+  say('Coverage looks steady for the next ', `${Math.round(known.at(-1).d / 1000)} km`, '.');
+}
+
+function watchSpeedUp(p) {
+  if (!p.ok) { poorSince = null; return; }
+  const q = quality(p);
+  if (q === 'poor') poorSince ??= p.t;
+  else if (q === 'good' && poorSince && p.t - poorSince > 60000) {
+    notify('faster', 'Connection is faster', `Latency down to ${p.rtt} ms.`);
+    poorSince = null;
+  }
+}
+
+// Load the tiles along the route ahead while online, so the map keeps working in dead zones.
+function prefetchTiles() {
+  const z = map.getZoom(), n = 2 ** z, want = [];
+  for (const p of aheadPath(1000, 150000)) {
+    const x = Math.floor((p.lon + 180) / 360 * n);
+    const y = Math.floor((1 - Math.log(Math.tan(p.lat * Math.PI / 180) + 1 / Math.cos(p.lat * Math.PI / 180)) / Math.PI) / 2 * n);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const k = `${z}/${x + dx}/${y + dy}`;
+      if (!prefetched.has(k)) { prefetched.add(k); want.push(k); }
+    }
+  }
+  for (const k of want.slice(0, 60)) {
+    const [, x, y] = k.split('/');
+    new Image().src = tiles.getTileUrl(Object.assign(L.point(+x, +y), { z }));
+  }
+  // Leftovers go out on later ticks, 60 at a time.
+  want.slice(60).forEach(k => prefetched.delete(k));
+}
+
+function drawRoute() {
+  routeLayer.clearLayers();
+  const now = Date.now(), next = stops.find(s => s.t > now);
+  const pts = stops.map(s => ({ ...s, at: stations.find(x => x.code === s.code) })).filter(s => s.at);
+  const line = { weight: 3, lineCap: 'round', interactive: false };
+  if (track.length) {
+    const start = pts.length >= 2 ? trackIndexNear([pts[0].at.lat, pts[0].at.lon]) : 0;
+    trackEnd = pts.length >= 2 ? trackIndexNear([pts.at(-1).at.lat, pts.at(-1).at.lon]) + 1 : track.length;
+    L.polyline(track.slice(start, trackEnd), { ...line, weight: 2, color: '#93a6b5', opacity: .45 }).addTo(routeLayer);
+    const i = lastPos ? trackIndexNear(lastPos) : start;
+    L.polyline([...(lastPos ? [lastPos] : []), ...track.slice(i, trackEnd)], { ...line, color: '#eef3f6', opacity: .8 }).addTo(routeLayer);
+  } else if (pts.length >= 2) {
+    // Until the track has loaded, dashed straight lines between stops stand in for it.
+    const upcoming = pts.filter(s => s.t > now).map(s => [s.at.lat, s.at.lon]);
+    L.polyline(pts.map(s => [s.at.lat, s.at.lon]), { ...line, color: '#93a6b5', opacity: .5, dashArray: '1 9' }).addTo(routeLayer);
+    if (upcoming.length) L.polyline([...(lastPos ? [lastPos] : []), ...upcoming], { ...line, color: '#eef3f6', opacity: .8, dashArray: '1 9' }).addTo(routeLayer);
+  }
+  pts.forEach((s, i) => {
+    const end = i === 0 || i === pts.length - 1, isNext = s === pts.find(p => p.code === next?.code);
+    const passed = s.t <= now && !end;
+    L.circleMarker([s.at.lat, s.at.lon], {
+      radius: end ? 7 : isNext ? 6 : 5, color: '#eef3f6', weight: end || isNext ? 3 : 2,
+      fillColor: '#0d1b26', fillOpacity: 1, opacity: passed ? .5 : 1
+    }).bindTooltip(isNext ? `${s.name} ${hhmm(s.t)}` : s.name, {
+      permanent: true, direction: 'right', offset: [8, 0],
+      className: `stop-label${end ? ' end' : ''}${isNext ? ' next' : ''}${passed ? ' passed' : ''}`
+    }).addTo(routeLayer);
+  });
+  hideCoveredLabels();
+}
+
+// ---------- samples ----------
+let offlineReason = '', points = [], online = null, since = Date.now(), outages = 0, lastSample = null, lastPos = null, lastKmh = null, fix = null;
+
+function startTrip() {
+  points = store.get(pointsKey()) || [];
+  online = null; since = Date.now(); outages = 0; lastPos = null; fix = null;
+  for (const p of points) {
+    if (p.ok !== online) { if (!p.ok && online !== null) outages++; online = p.ok; since = p.t; }
+    if (p.lat) lastPos = [p.lat, p.lon];
+  }
+  // A track resumed after a long gap should not claim one continuous state.
+  if (points.length && Date.now() - points.at(-1).t > 120000) { online = null; since = Date.now(); }
+  trailLayer.clearLayers();
+  points.forEach((p, i) => addTrail(points[i - 1], p));
+  if (lastPos) { marker.setLatLng(lastPos).addTo(map); map.setView(lastPos, 10); }
+  $('trip').hidden = false;
+  // Cached timetable and track keep the route on screen when the trip starts offline.
+  stops = store.get(stopsKey()) || [];
+  track = store.get(trackKey())?.pts || [];
+  if (stops.length) { drawRoute(); drawRibbon(); }
+  loadTimetable().then(drawRibbon).catch(() => {});
+  loadTrack().catch(() => {});
+  render();
+}
+
+function setState(ok) {
+  if (ok === online) return;
+  if (!ok && online !== null) outages++;
+  if (ok && online === false) {
+    tiles.redraw();
+    notify('back', 'Connection is back', `Offline for ${dur(Date.now() - since)}`);
+  }
+  online = ok;
+  since = Date.now();
+  render();
+}
+
+async function tick() {
+  if (!trip) return;
+  const conn = navigator.connection || {};
+  const p = { t: Date.now(), ok: false, down: conn.downlink, v: 2 };
+  const t0 = performance.now();
+  try {
+    // An opaque no-cors response still proves the round trip; a network failure rejects.
+    await fetch(PROBE, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+    p.rtt = Math.round(performance.now() - t0);
+    p.ok = true;
+    offlineReason = '';
+  } catch (e) {
+    offlineReason = e.name === 'TimeoutError' ? 'no answer in 10s' : 'no connection';
+  }
+  // Digitraffic allows 50 requests per 5 minutes, so the position is fetched less often than the probe runs.
+  if (p.ok && p.t - locAt >= LOCATION_EVERY && p.t >= locPausedUntil) {
+    locAt = p.t;
+    try {
+      const r = await fetch(`${API}/train-locations/latest/${trip.train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store' });
+      if (r.status === 429) locPausedUntil = p.t + 60000;
+      const [loc] = r.ok ? await r.json() : [];
+      if (loc) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
+    } catch {}
+  }
+  // Without a fresh fix, move the estimate along the route at the speed of the last fix, so dead zones are painted where the train actually was.
+  if (!p.fix && fix) {
+    const d = fix.kmh / 3.6 * (p.t - fix.t) / 1000;
+    const path = d > 50 ? aheadPath(100, d + 100, fix.pos) : [];
+    const at = path.length ? path.reduce((a, b) => Math.abs(b.d - d) < Math.abs(a.d - d) ? b : a) : null;
+    lastPos = at ? [at.lat, at.lon] : fix.pos;
+    p.est = true;
+  }
+  if (!p.fix && lastPos) [p.lat, p.lon] = lastPos;
+  lastSample = p.t;
+  setState(p.ok);
+  $('rtt').textContent = p.ok ? `${p.rtt} ms` : '-';
+  if (p.ok && p.t - speedAt >= SPEED_EVERY) measureSpeed().then(() => { if (measured != null) { $('down').textContent = mbps(measured); points.at(-1).mbps = Math.round(measured); store.set(pointsKey(), points); } });
+  $('down').textContent = !p.ok ? '-' : measured != null ? mbps(measured) : conn.downlink != null ? (conn.downlink >= 10 ? 'measuring' : mbps(conn.downlink)) : 'n/a';
+  if (p.kmh != null) $('speed').textContent = `${p.kmh} km/h`;
+  if (lastPos) {
+    marker.setLatLng(lastPos).addTo(map);
+    if (follow) map.panTo(lastPos);
+  }
+  if (p.fix) drawRoute();
+  addTrail(points.at(-1), p);
+  points.push(p);
+  store.set(pointsKey(), points);
+  addToHex(p);
+  if (p.kmh > 10) speeds = [...speeds.slice(-11), p.kmh];
+  watchSpeedUp(p);
+  forecast();
+  if (p.ok) prefetchTiles();
+  if (p.ok && Date.now() - timetableAt > 60000) await loadTimetable().catch(() => {});
+  drawRibbon();
+  render();
+}
+
+// ---------- rendering ----------
+function render() {
+  const state = online === null ? 'connecting' : online ? 'online' : 'offline';
+  $('status').dataset.state = state;
+  document.body.dataset.state = state;
+  $('state').textContent = { connecting: 'Connecting', online: 'Online', offline: 'Offline' }[state];
+  $('for').textContent = online === null ? '' : `for ${dur(Date.now() - since)}` + (online === false && offlineReason ? `, ${offlineReason}` : '');
+  $('outages').textContent = outages;
+  document.title = online === false ? `Offline ${dur(Date.now() - since)}` : lastKmh != null ? `${lastKmh} km/h, Train netmap` : 'Train netmap';
+}
+
+const svg = (tag, attrs, text) => {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (text != null) el.textContent = text;
+  return el;
+};
+
+function drawRibbon() {
+  const box = $('ribbon');
+  if (stops.length < 2) { box.replaceChildren(); return; }
+  const W = box.clientWidth, Y = 46, pad = 8;
+  const t0 = stops[0].t, t1 = stops.at(-1).t, now = Date.now();
+  const x = t => pad + Math.min(1, Math.max(0, (t - t0) / (t1 - t0))) * (W - pad * 2);
+  const nodes = [svg('line', { x1: x(t0), y1: Y, x2: x(t1), y2: Y, stroke: '#2a3d4d', 'stroke-width': 8, 'stroke-linecap': 'round' })];
+
+  // Each sample paints the stretch of track until the next sample.
+  const inTrip = points.filter(p => p.t >= t0 && p.t <= t1);
+  inTrip.forEach((p, i) => {
+    const a = x(p.t), b = x(Math.min(inTrip[i + 1]?.t ?? p.t + POLL, p.t + POLL * 3));
+    nodes.push(svg('rect', { x: a, y: Y - 4, width: Math.max(1, b - a), height: 8, fill: COLORS[quality(p)] }));
+  });
+
+  const off = inTrip.filter(p => !p.ok).length, good = inTrip.filter(p => p.ok && quality(p) === 'good').length;
+  $('trip-sum').textContent = inTrip.length ? `Offline ${dur(off * POLL)} so far, ${Math.round(good / inTrip.length * 100)}% good` : '';
+  const next = stops.find(s => s.t > now);
+  const placed = { above: -Infinity, below: -Infinity };
+  stops.forEach((s, i) => {
+    const sx = x(s.t), end = i === 0 || i === stops.length - 1;
+    nodes.push(svg('circle', { cx: sx, cy: Y, r: end ? 7 : 5, fill: '#0d1b26', stroke: '#eef3f6', 'stroke-width': end ? 3 : 2 }));
+    const side = i % 2 ? 'below' : 'above';
+    const label = s === next && !end ? `${s.name} ${hhmm(s.t)}` : s.name;
+    const width = label.length * 6.6;
+    const anchor = i === 0 ? 'start' : i === stops.length - 1 ? 'end' : 'middle';
+    const left = anchor === 'start' ? sx : anchor === 'end' ? sx - width : sx - width / 2;
+    // Skip labels that would collide; the dot keeps its name as a hover title.
+    if (!end && s !== next && left < placed[side] + 10) {
+      nodes.at(-1).appendChild(svg('title', {}, s.name));
+      return;
+    }
+    placed[side] = left + width;
+    nodes.push(svg('text', {
+      x: sx, y: side === 'above' ? Y - 16 : Y + 26, 'text-anchor': anchor,
+      class: end ? 'end' : s === next ? 'next' : ''
+    }, label));
+  });
+
+  if (now > t0 && now < t1) {
+    // The ribbon is redrawn every second; a negative delay keeps the pulse phase continuous.
+    nodes.push(svg('circle', { cx: x(now), cy: Y, r: 9, class: 'ribbon-pulse', style: `animation-delay: -${(now % 2000) / 1000}s` }));
+    nodes.push(svg('circle', { cx: x(now), cy: Y, r: 9, fill: '#eef3f6', stroke: '#0d1b26', 'stroke-width': 3 }));
+  }
+  box.replaceChildren(...nodes);
+
+  const last = stops.at(-1);
+  $('trip-name').innerHTML = '';
+  $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}` }));
+  const late = last.late > 0 ? `${last.late} min late` : last.late < 0 ? `${-last.late} min early` : 'on time';
+  $('trip-eta').innerHTML = '';
+  $('trip-eta').append(
+    next && next !== last ? `Next ${next.name} ${hhmm(next.t)}, ` : '',
+    Object.assign(document.createElement('b'), { textContent: `${last.name} ${hhmm(last.t)}` }),
+    `, ${late}`
+  );
+}
+
+// ---------- controls ----------
+function openSetup() {
+  $('setup').hidden = false;
+  $('setup-cancel').hidden = !trip;
+  $('setup-msg').textContent = '';
+  loadStations().then(() => {
+    const prev = trip || lastTrip;
+    if (prev?.from && !$('from').value) { $('from').value = stationName(prev.from); $('to').value = stationName(prev.to); suggestTrains(); }
+  }).catch(() => { $('setup-msg').textContent = 'Station list did not load. Check the connection and try again.'; });
+  $('from').focus();
+}
+// Typed or picked train text is only replaced while it still holds our own suggestion.
+let autoTrain = true, suggestedFor = '';
+$('train-no').oninput = () => { autoTrain = !$('train-no').value; };
+async function suggestTrains() {
+  const from = stationCode($('from').value), to = stationCode($('to').value);
+  if (!from || !to || from + to === suggestedFor) return;
+  suggestedFor = from + to;
+  try {
+    const opts = await findTrains(from, to);
+    $('trains').replaceChildren(...opts.map(o => Object.assign(document.createElement('option'), {
+      value: o.label, label: `${stationName(from)} ${hhmm(o.dep)}, ${stationName(to)} ${hhmm(o.arr)}`
+    })));
+    if (autoTrain && opts[0]) $('train-no').value = opts[0].label;
+    $('setup-msg').textContent = opts.length ? '' : `No train from ${stationName(from)} to ${stationName(to)} in the next few hours. Type the train if you know it.`;
+  } catch { suggestedFor = ''; }
+}
+for (const id of ['from', 'to']) $(id).addEventListener('input', suggestTrains);
+$('trip-btn').onclick = openSetup;
+$('follow').onclick = () => setFollow(!follow);
+$('whole').onclick = () => {
+  const b = routeLayer.getLayers().flatMap(l => l.getLatLngs ? l.getLatLngs() : [l.getLatLng()]);
+  if (lastPos) b.push(L.latLng(lastPos));
+  if (b.length < 2) return;
+  setFollow(false);
+  map.fitBounds(L.latLngBounds(b), { paddingTopLeft: [40, 160], paddingBottomRight: [40, 180] });
+};
+$('setup-cancel').onclick = () => { $('setup').hidden = true; };
+$('setup').querySelector('form').onsubmit = async e => {
+  e.preventDefault();
+  const btn = e.submitter, msg = $('setup-msg');
+  const from = stationCode($('from').value), to = stationCode($('to').value);
+  if (!from || !to) { msg.textContent = 'Pick both stations from the list.'; return; }
+  btn.disabled = true; btn.textContent = 'Finding your train';
+  try {
+    let train = trainNo($('train-no').value);
+    if (!train) {
+      const [best] = await findTrains(from, to);
+      if (!best) throw new Error(`No train from ${stationName(from)} to ${stationName(to)} in the next few hours. Type the train if you know it.`);
+      train = String(best.t.trainNumber);
+    }
+    trip = { train, from, to, date: today };
+    store.set('netmap-trip', trip);
+    history.replaceState(null, '', location.pathname);
+    $('setup').hidden = true;
+    startTrip();
+  } catch (err) {
+    msg.textContent = err.message.startsWith('No train') ? err.message : 'Could not reach Digitraffic. Check the connection and try again.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Track trip';
+  }
+};
+
+const syncNotify = () => {
+  const on = Notification.permission === 'granted';
+  $('notify').textContent = on ? 'Alerts on' : 'Turn on alerts';
+  $('notify').setAttribute('aria-pressed', on);
+};
+$('notify').onclick = () => Notification.requestPermission().then(syncNotify);
+// Export carries every logged trip, so one file restores the whole coverage map on another browser.
+$('export').onclick = () => {
+  const trips = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k?.startsWith('netmap-2')) trips[k] = store.get(k);
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), trip, trips })], { type: 'application/json' }));
+  a.download = `train-netmap-${today}.json`;
+  a.click();
+};
+$('import').onclick = () => $('import-file').click();
+$('import-file').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const trips = data.trips || (data.points && data.trip ? { [`netmap-${data.trip.date}-${trainNo(data.trip.train)}`]: data.points } : {});
+    let added = 0;
+    for (const [k, pts] of Object.entries(trips)) {
+      const have = store.get(k) || [], seen = new Set(have.map(p => p.t));
+      const merged = [...have, ...pts.filter(p => !seen.has(p.t))].sort((a, b) => a.t - b.t);
+      added += merged.length - have.length;
+      store.set(k, merged);
+    }
+    $('notice').textContent = `Imported ${added} samples from ${Object.keys(trips).length} trips.`;
+    setTimeout(() => location.reload(), 1500);
+  } catch { $('notice').textContent = 'That file is not a train netmap export.'; }
+};
+
+addEventListener('offline', () => setState(false));
+addEventListener('online', tick);
+addEventListener('resize', drawRibbon);
+
+$('notice').textContent = CARTO_KEY ? '' : 'The map background is off. Copy config.example.js to config.js and add a CARTO key.';
+navigator.storage?.persist?.()?.catch(() => {});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+syncNotify();
+render();
+setInterval(() => { render(); if (online !== null) drawRibbon(); }, 1000);
+loadStations().then(() => { if (trip) loadTimetable().then(drawRibbon); }).catch(() => {});
+if (trip) startTrip(); else openSetup();
+const loop = () => tick().finally(() => setTimeout(loop, POLL));
+loop();
+</script>
+</body>
+</html>
