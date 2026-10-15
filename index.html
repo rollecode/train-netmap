@@ -941,7 +941,7 @@ function render() {
   if (dest && left > 0) {
     const s = Math.floor(left / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
     const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-    const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(' ');
+    const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(', ');
     $('arrive').replaceChildren(`Arriving in ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }));
   } else $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}` : '';
   const last = points.at(-1);
