@@ -47,7 +47,7 @@ Started with `start.command` or `start.sh`, a service worker keeps the page and 
 - Train positions, timetables and the track: [Fintraffic Digitraffic](https://www.digitraffic.fi), CC BY 4.0.
 - Map tiles: [CARTO](https://carto.com) on OpenStreetMap data.
 - Latency and bandwidth: `cp.cloudflare.com` and `speed.cloudflare.com`.
-- Masts: communication masts and towers from [OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL, in `data/fi-masts.js`. They show as beacons with a 3 km disc around each, blue, or green when tagged as a mobile phone site; the disc is a reminder of a cell's reach, not a measured footprint. "Masts" turns them off. It is what volunteers have mapped, so it is far from every base station in the country.
+- Masts: communication masts and towers from [OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL, in `data/fi-masts.js`. They show as beacons, blue, or green when tagged as a mobile phone site, and with them every Speedtest tile in view, so the coverage drawn around a mast is what people measured there rather than a guess. "Masts" turns both off. It is what volunteers have mapped, so it is far from every base station in the country.
 - Coverage baseline: [Speedtest by Ookla Global Mobile Network Performance Maps](https://www.ookla.com/ookla-for-good/open-data), CC BY-NC-SA 4.0. That licence covers `data/fi-mobile.js` only; the code is MIT.
 
 Nothing else leaves the browser. Export writes every trip to one JSON file, Import merges such a file back in, and the page warns when browser storage is full.

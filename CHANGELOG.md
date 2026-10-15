@@ -1,6 +1,6 @@
 ### 1.6.2: 2026-10-15
 
-* Show the mast reach discs only when zoomed in, and calm the beacons
+* Draw measured Speedtest coverage around the masts instead of guessed discs, and calm the beacons
 
 ### 1.6.1: 2026-10-15
 

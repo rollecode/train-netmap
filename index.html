@@ -495,10 +495,8 @@ function trackIndexNear(pos) {
 
 // ---------- masts ----------
 // Communication masts from OpenStreetMap, shown as beacons; only the ones in view, and only when zoomed in enough to tell them apart.
-const mastLayer = L.layerGroup();
+const mastLayer = L.layerGroup(), coverageLayer = L.layerGroup();
 let masts = null, mastsOn = store.get('netmap-masts') ?? true;
-// A rural macro cell reaches several kilometres; the disc is a reminder of that reach, not a measured footprint.
-const MAST_REACH = 3000;
 function loadMasts() {
   if (masts) return drawMasts();
   const el = document.createElement('script');
@@ -506,17 +504,28 @@ function loadMasts() {
   el.onload = () => { masts = window.NETMAP_MASTS || []; drawMasts(); };
   document.head.appendChild(el);
 }
+// Measured coverage: every Speedtest tile in view, so what surrounds a mast is what people actually got there.
+function drawCoverageInView() {
+  coverageLayer.clearLayers();
+  if (!mastsOn || !ookla || map.getZoom() < 9) return;
+  const b = map.getBounds(), [x0, y0] = tileXY(b.getNorth(), b.getWest()), [x1, y1] = tileXY(b.getSouth(), b.getEast());
+  let n = 0;
+  for (let x = x0; x <= x1 && n < 4000; x++) for (let y = y0; y <= y1 && n < 4000; y++) {
+    const o = ookla.get(quadkey(x, y));
+    if (!o) continue;
+    n++;
+    L.rectangle(tileBounds(x, y), { stroke: false, fillColor: COLORS[tileQuality(o)], fillOpacity: .22, interactive: false }).addTo(coverageLayer);
+  }
+}
 function drawMasts() {
   mastLayer.clearLayers();
+  drawCoverageInView();
   if (!mastsOn || !masts || map.getZoom() < 8) return;
   const b = map.getBounds().pad(.2);
   let n = 0;
   for (const [lat, lon, mobile] of masts) {
     if (!b.contains([lat, lon])) continue;
     if (++n > 400) break;
-    const c = mobile ? COLORS.good : '#6cb6ff';
-    // The reach discs pile up into a blob over a town, so they only appear once the map is close enough to tell masts apart.
-    if (map.getZoom() >= 11) L.circle([lat, lon], { radius: MAST_REACH, stroke: false, fillColor: c, fillOpacity: .04, interactive: false }).addTo(mastLayer);
     L.marker([lat, lon], {
       icon: L.divIcon({ className: `mast${mobile ? ' mobile' : ''}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
       interactive: false, keyboard: false
@@ -527,7 +536,7 @@ function setMasts(on) {
   mastsOn = on;
   store.set('netmap-masts', on);
   $('masts-btn').setAttribute('aria-pressed', on);
-  if (on) { mastLayer.addTo(map); loadMasts(); } else mastLayer.remove();
+  if (on) { coverageLayer.addTo(map); mastLayer.addTo(map); loadMasts(); } else { mastLayer.remove(); coverageLayer.remove(); }
 }
 map.on('moveend zoomend', drawMasts);
 
@@ -591,7 +600,7 @@ function notify(kind, title, body, gap = 180000) {
 let ookla = null;
 const tileScript = document.createElement('script');
 tileScript.src = 'data/fi-mobile.js';
-tileScript.onload = () => { ookla = new Map(window.NETMAP_TILES.map(([q, d, l, t]) => [q, { d, l, t }])); drawBaseline(); forecast(); };
+tileScript.onload = () => { ookla = new Map(window.NETMAP_TILES.map(([q, d, l, t]) => [q, { d, l, t }])); drawBaseline(); drawMasts(); forecast(); };
 document.head.appendChild(tileScript);
 function tileXY(lat, lon, z = 16) {
   const n = 2 ** z, s = Math.sin(lat * Math.PI / 180);
