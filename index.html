@@ -699,6 +699,7 @@ function drawRoute() {
 let offlineReason = '', points = [], online = null, since = Date.now(), outages = 0, lastSample = null, lastPos = null, lastKmh = null, fix = null;
 
 function startTrip() {
+  worker?.postMessage({ train: trip.train });
   points = store.get(pointsKey()) || [];
   online = null; since = Date.now(); outages = 0; lastPos = null; fix = null;
   for (const p of points) {
@@ -733,39 +734,83 @@ function setState(ok) {
   render();
 }
 
-let ticking = false;
-async function tick() {
-  if (ticking) return;
-  ticking = true;
-  try { await probe(); } finally { ticking = false; }
-}
-async function probe() {
-  // A running download would inflate the probe's round trip, so it waits.
-  if (!trip || speedRunning) return;
-  const conn = navigator.connection || {};
-  const p = { t: Date.now(), ok: false, down: conn.downlink, v: 2 };
+// Hidden tabs get their timers slowed to once a minute, but a worker's timers run on, so the probe lives there.
+// The worker only measures and posts; everything else happens on the main thread when the sample arrives.
+const WORKER_SRC = `
+const POLL = ${POLL}, LOCATION_EVERY = ${LOCATION_EVERY}, PROBE = ${JSON.stringify(PROBE)}, API = ${JSON.stringify(API)};
+let train = null, locAt = 0, locPausedUntil = 0, paused = false;
+onmessage = e => {
+  if (e.data.train !== undefined && e.data.train !== train) { train = e.data.train; sample(); }
+  if (e.data.paused !== undefined) paused = e.data.paused;
+};
+async function sample() {
+  if (!train || paused) return;
+  const p = { t: Date.now(), ok: false };
   const t0 = performance.now();
   try {
-    // An opaque no-cors response still proves the round trip; a network failure rejects.
     await fetch(PROBE, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(POLL) });
     p.rtt = Math.round(performance.now() - t0);
     p.ok = true;
-    offlineReason = '';
-  } catch (e) {
-    offlineReason = e.name === 'TimeoutError' ? 'no answer in 5s' : 'no connection';
-  }
-  // Digitraffic allows 50 requests per 5 minutes, so the position is fetched less often than the probe runs.
-  const train = trip.train;
+  } catch (e) { p.reason = e.name === 'TimeoutError' ? 'no answer in 5s' : 'no connection'; }
   if (p.ok && p.t - locAt >= LOCATION_EVERY && p.t >= locPausedUntil) {
     locAt = p.t;
     try {
-      const r = await fetch(`${API}/train-locations/latest/${train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: DT_HEADERS });
+      const r = await fetch(API + '/train-locations/latest/' + train, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: { 'Digitraffic-User': 'train-netmap' } });
       if (r.status === 429) locPausedUntil = p.t + 60000;
       const [loc] = r.ok ? await r.json() : [];
-      if (loc && train === trip?.train) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
+      if (loc) { p.lon = loc.location.coordinates[0]; p.lat = loc.location.coordinates[1]; p.kmh = loc.speed; p.fix = true; }
     } catch {}
   }
-  if (train !== trip?.train) return;
+  p.train = train;
+  postMessage(p);
+}
+const loop = async () => { const t = Date.now(); await sample(); setTimeout(loop, Math.max(500, POLL - (Date.now() - t))); };
+loop();
+`;
+let worker = null;
+try {
+  worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+  worker.onmessage = e => handleSample(e.data);
+  // If the worker dies, the main-thread loop takes over on its next tick.
+  worker.onerror = () => { worker.terminate(); worker = null; };
+} catch { worker = null; }
+
+// Fallback when workers are unavailable: the same sampling on the main thread.
+let ticking = false;
+async function tick() {
+  if (ticking || worker) return;
+  ticking = true;
+  try {
+    if (!trip || speedRunning) return;
+    const p = { t: Date.now(), ok: false, train: trip.train };
+    const t0 = performance.now();
+    try {
+      await fetch(PROBE, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(POLL) });
+      p.rtt = Math.round(performance.now() - t0);
+      p.ok = true;
+    } catch (e) { p.reason = e.name === 'TimeoutError' ? 'no answer in 5s' : 'no connection'; }
+    if (p.ok && p.t - locAt >= LOCATION_EVERY && p.t >= locPausedUntil) {
+      locAt = p.t;
+      try {
+        const r = await fetch(`${API}/train-locations/latest/${p.train}`, { signal: AbortSignal.timeout(10000), cache: 'no-store', headers: DT_HEADERS });
+        if (r.status === 429) locPausedUntil = p.t + 60000;
+        const [loc] = r.ok ? await r.json() : [];
+        if (loc) { [p.lon, p.lat] = loc.location.coordinates; p.kmh = loc.speed; p.fix = true; }
+      } catch {}
+    }
+    handleSample(p);
+  } finally { ticking = false; }
+}
+
+function handleSample(p) {
+  // A sample from a trip that was changed meanwhile, or taken during the bandwidth test, is dropped.
+  if (!trip || p.train !== trip.train || speedRunning) return;
+  const conn = navigator.connection || {};
+  p.v = 2;
+  p.down = conn.downlink;
+  offlineReason = p.ok ? '' : p.reason || 'no connection';
+  delete p.reason; delete p.train;
+  if (p.fix) { lastPos = [p.lat, p.lon]; lastKmh = p.kmh; fix = { pos: lastPos, t: p.t, kmh: p.kmh }; }
   // Without a fresh fix, move the estimate along the route at the speed of the last fix, so dead zones are painted where the train actually was.
   if (!p.fix && fix) {
     const d = fix.kmh / 3.6 * (p.t - fix.t) / 1000;
@@ -780,7 +825,9 @@ async function probe() {
   $('rtt').textContent = p.ok ? `${p.rtt} ms` : '-';
   if (p.ok && p.t - speedAt >= SPEED_EVERY) {
     const before = measured;
+    worker?.postMessage({ paused: true });
     measureSpeed().then(() => {
+      worker?.postMessage({ paused: false });
       if (measured == null) return;
       $('down').textContent = mbps(measured); points.at(-1).mbps = Math.round(measured); store.set(pointsKey(), points);
       if (measured < 1 && (before == null || before >= 1)) notify('bw-low', 'Bandwidth is down to a trickle', `${mbps(measured)} right now.`, 300000);

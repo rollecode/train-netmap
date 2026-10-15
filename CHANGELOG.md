@@ -1,3 +1,7 @@
+### 1.3.1: 2026-10-15
+
+* Keep measuring, the tab icon and alerts running while the tab is hidden
+
 ### 1.3.0: 2026-10-15
 
 * Alert on drops, slowdowns, bandwidth collapse, next stop, arrival and delay changes
