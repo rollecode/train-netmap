@@ -1,3 +1,9 @@
+### 1.3.0: 2026-10-15
+
+* Alert on drops, slowdowns, bandwidth collapse, next stop, arrival and delay changes
+* Warn again under a minute before a dead zone, play a tone with every alert
+* Add an alerts panel with per-alert switches and a test button
+
 ### 1.2.4: 2026-10-15
 
 * Make the offline and good line smaller with more space above it

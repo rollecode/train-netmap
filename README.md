@@ -26,7 +26,7 @@ The track is the same train's GPS trail from an earlier day, fetched once per tr
 
 ## Alerts
 
-Press "Turn on alerts" once; a test alert follows right away. After that you get one when a dead zone is about 3 minutes ahead, when the connection is expected back, when it is back and when it gets faster. Each alert is also written under the readings for two minutes, so you can tell when the browser sent one that the system swallowed.
+Press "Alerts" to allow notifications and to choose which ones you want; the same panel has a test button. A short tone from the page comes with each alert, and can be turned off there. The alerts are: a dead zone 3 minutes ahead and again under a minute ahead, the connection dropping, when it is expected back, when it is back, when it is slow for half a minute, when it gets faster, when faster coverage is 2 minutes ahead, bandwidth collapsing under 1 Mbps or recovering, the next stop 2 minutes out, the destination 10 and 2 minutes out, and the train's delay changing by 3 minutes or more. Each alert is also written under the readings for two minutes, so you can tell when the browser sent one that the system swallowed.
 
 Two things on the computer decide whether you see them. On macOS the browser must be allowed under System Settings, Notifications, and a Focus mode such as Do Not Disturb hides them unless the browser is on that Focus mode's allowed list; a web page cannot get past Focus by itself. Keep the page in a visible tab or its own window: Chrome slows a hidden tab down to one check per minute after a few minutes, so alerts from a hidden tab arrive late.
 

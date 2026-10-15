@@ -71,10 +71,16 @@
   .legend li { display: flex; align-items: center; gap: 8px; }
   .legend i { width: 18px; height: 6px; border-radius: 3px; }
 
-  #setup { position: absolute; inset: 0; z-index: 900; background: rgba(13, 27, 38, .9); display: grid; place-items: center; padding: 24px; }
-  #setup[hidden] { display: none; }
-  #setup form { width: min(560px, 100%); }
-  #setup h2 { margin: 0 0 28px; font-size: 36px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; }
+  #setup, .overlay { position: absolute; inset: 0; z-index: 900; background: rgba(13, 27, 38, .9); display: grid; place-items: center; padding: 24px; }
+  #setup[hidden], .overlay[hidden] { display: none; }
+  #setup form, .overlay form { width: min(560px, 100%); }
+  #setup h2, .overlay h2 { margin: 0 0 28px; font-size: 36px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; }
+  #alerts-perm { margin: -12px 0 20px; color: var(--muted); }
+  #alerts-perm:empty { display: none; }
+  #alerts-perm a { color: var(--fg); }
+  .checks { display: grid; gap: 10px; }
+  .checks label { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+  .checks input { width: 18px; height: 18px; margin: 0; accent-color: var(--good); }
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; }
   .fields label { display: grid; gap: 6px; color: var(--muted); }
   .fields .wide { grid-column: 1 / -1; }
@@ -148,7 +154,7 @@
   <button id="follow" aria-pressed="true">Follow train</button>
   <button id="whole">Whole route</button>
   <button id="trip-btn">Change trip</button>
-  <button id="notify" aria-pressed="false">Turn on alerts</button>
+  <button id="notify" aria-pressed="false">Alerts</button>
   <button id="export">Export data</button>
   <button id="import">Import data</button>
   <input type="file" id="import-file" accept=".json,application/json" hidden>
@@ -181,6 +187,28 @@
       <button type="button" id="setup-cancel">Cancel</button>
     </div>
     <p id="setup-msg" role="alert"></p>
+  </form>
+</div>
+<div id="alerts" class="overlay" hidden>
+  <form>
+    <h2>Alerts</h2>
+    <p id="alerts-perm"></p>
+    <div class="checks">
+      <label><input type="checkbox" data-kind="deadzone" checked> Dead zone ahead, 3 minutes and 1 minute before</label>
+      <label><input type="checkbox" data-kind="offline" checked> Connection dropped</label>
+      <label><input type="checkbox" data-kind="back" checked> Connection expected back, and back</label>
+      <label><input type="checkbox" data-kind="slow" checked> Connection slow for half a minute</label>
+      <label><input type="checkbox" data-kind="faster" checked> Connection faster, or faster coverage 2 minutes ahead</label>
+      <label><input type="checkbox" data-kind="bandwidth" checked> Bandwidth under 1 Mbps, or back above 20</label>
+      <label><input type="checkbox" data-kind="stop" checked> Next stop 2 minutes out</label>
+      <label><input type="checkbox" data-kind="arrive" checked> Destination 10 and 2 minutes out</label>
+      <label><input type="checkbox" data-kind="delay" checked> Delay changes by 3 minutes or more</label>
+      <label><input type="checkbox" data-kind="sound" checked> Play a tone with every alert</label>
+    </div>
+    <div class="submit">
+      <button type="button" id="alerts-test">Send a test alert</button>
+      <button type="button" id="alerts-close">Done</button>
+    </div>
   </form>
 </div>
 <datalist id="stations"></datalist>
@@ -341,7 +369,7 @@ const lastTrip = store.get('netmap-trip');
 // A trip from yesterday is still live after midnight on a night train.
 let trip = [today, localDate(Date.now() - 86400000)].includes(lastTrip?.date) && trainNo(lastTrip.train) ? { ...lastTrip, train: trainNo(lastTrip.train) } : null;
 if (trainNo(params.get('train'))) trip = { train: trainNo(params.get('train')), from: params.get('from'), to: params.get('to'), date: today };
-let stops = [], timetableAt = 0, trainLabel = '', track = [], trackEnd = Infinity;
+let stops = [], timetableAt = 0, trainLabel = '', track = [], trackEnd = Infinity, lastLate = null;
 const pointsKey = () => `netmap-${trip.date}-${trip.train}`;
 const stopsKey = () => `netmap-stops-${trip.date}-${trip.train}`;
 const trackKey = () => `netmap-track-${trip.train}`;
@@ -387,6 +415,9 @@ async function loadTimetable() {
     return row && { code, name: stationName(code), t: when(row), late: row.differenceInMinutes || 0, passed: !!row.actualTime };
   }).filter(Boolean);
   store.set(stopsKey(), stops);
+  const late = stops.at(-1)?.late ?? 0;
+  if (lastLate != null && Math.abs(late - lastLate) >= 3) notify('delay', late > lastLate ? `Train now ${late} min late` : `Delay down to ${Math.max(0, late)} min`, `${stops.at(-1).name} at ${hhmm(stops.at(-1).t)}.`, 600000);
+  lastLate = late;
   drawRoute();
 }
 
@@ -421,11 +452,30 @@ let speeds = [], poorSince = null, notified = {}, prefetched = new Set();
 const RANK = { off: 0, poor: 1, fair: 2, good: 3 };
 const NEIGHBOURS = [[0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 
+// A short tone from the page itself, for when the system notification is muted or hidden.
+let audio = null;
+function beep(n) {
+  if (!audio) return;
+  const t0 = audio.currentTime;
+  for (let i = 0; i < n; i++) {
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = 'sine'; o.frequency.value = i % 2 ? 1046 : 784;
+    g.gain.setValueAtTime(0, t0 + i * .18); g.gain.linearRampToValueAtTime(.25, t0 + i * .18 + .02); g.gain.linearRampToValueAtTime(0, t0 + i * .18 + .15);
+    o.connect(g).connect(audio.destination); o.start(t0 + i * .18); o.stop(t0 + i * .18 + .16);
+  }
+}
+// Which alert kinds are on, kept in the browser.
+const GROUP = { drop: 'deadzone', 'drop-soon': 'deadzone', offline: 'offline', 'eta-back': 'back', back: 'back', slower: 'slow', faster: 'faster', 'faster-ahead': 'faster', 'bw-low': 'bandwidth', 'bw-high': 'bandwidth', 'arrive-10': 'arrive', 'arrive-2': 'arrive', delay: 'delay' };
+const alertsOn = Object.assign({ deadzone: true, offline: true, back: true, slow: true, faster: true, bandwidth: true, stop: true, arrive: true, delay: true, sound: true }, store.get('netmap-alerts') || {});
 function notify(kind, title, body, gap = 180000) {
+  const group = GROUP[kind] || (kind.startsWith('stop-') ? 'stop' : kind);
+  if (kind !== 'test' && !alertsOn[group]) return;
   if (Notification.permission !== 'granted' || Date.now() - (notified[kind] || 0) < gap) return;
   notified[kind] = Date.now();
-  // Stays on screen until dismissed, and a repeat of the same kind replaces the earlier one.
-  try { new Notification(title, { body, tag: kind, requireInteraction: kind !== 'faster' }); } catch {}
+  // Important ones stay on screen until dismissed; a repeat of the same kind replaces the earlier one.
+  const sticky = ['drop', 'drop-soon', 'offline', 'back', 'eta-back', 'arrive-2'].includes(kind);
+  try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
+  if (alertsOn.sound) beep(sticky ? 3 : 2);
   // The page keeps its own record, so a silenced notification is still visible here.
   $('notice').textContent = `Alert ${hhmm(Date.now())}: ${title}. ${body}`;
   setTimeout(() => { if ($('notice').textContent.startsWith('Alert ')) $('notice').textContent = ''; }, 120000);
@@ -567,12 +617,17 @@ function forecast() {
     while (ahead[j + 1] && ahead[j + 1].c !== null && ahead[j + 1].c === 'off') j++;
     const length = ahead[j].d - ahead[i].d + 500;
     say('Dead zone in ', mins(ahead[i].d), `, lasting ${mins(length)}.`);
-    if (ahead[i].d / (kmh * 1000 / 60) <= 3) notify('drop', 'Dead zone ahead', `Starts in ${mins(ahead[i].d)} and lasts ${mins(length)}.`, 600000);
+    const inMin = ahead[i].d / (kmh * 1000 / 60);
+    if (inMin <= 1) notify('drop-soon', 'Dead zone in under a minute', `Lasts ${mins(length)}. Save your work.`, 600000);
+    else if (inMin <= 3) notify('drop', 'Dead zone ahead', `Starts in ${mins(ahead[i].d)} and lasts ${mins(length)}.`, 600000);
     return;
   }
   if (cur === 'poor') {
     const faster = known.find(p => RANK[p.c] >= RANK.fair);
-    if (faster) return say('Faster connection in ', mins(faster.d), '.');
+    if (faster) {
+      if (faster.d / (kmh * 1000 / 60) <= 2) notify('faster-ahead', 'Faster connection ahead', `In ${mins(faster.d)}.`, 600000);
+      return say('Faster connection in ', mins(faster.d), '.');
+    }
   }
   say('Coverage data shows a steady connection for the next ', span(reach), '.');
 }
@@ -580,7 +635,11 @@ function forecast() {
 function watchSpeedUp(p) {
   if (!p.ok) { poorSince = null; return; }
   const q = quality(p);
-  if (q === 'poor') { poorSince ??= p.t; return; }
+  if (q === 'poor') {
+    poorSince ??= p.t;
+    if (p.t - poorSince > 30000) notify('slower', 'Connection is slow', `Latency ${p.rtt} ms for half a minute.`, 300000);
+    return;
+  }
   if (q === 'good' && poorSince && p.t - poorSince > 60000) notify('faster', 'Connection is faster', `Latency down to ${p.rtt} ms.`);
   poorSince = null;
 }
@@ -664,7 +723,7 @@ function startTrip() {
 
 function setState(ok) {
   if (ok === online) return;
-  if (!ok && online !== null) outages++;
+  if (!ok && online !== null) { outages++; notify('offline', 'Connection dropped', offlineReason ? `${offlineReason[0].toUpperCase()}${offlineReason.slice(1)}.` : '', 60000); }
   if (ok && online === false) {
     tiles.redraw();
     notify('back', 'Connection is back', `Offline for ${dur(Date.now() - since)}`);
@@ -719,7 +778,15 @@ async function probe() {
   lastSample = p.t;
   setState(p.ok);
   $('rtt').textContent = p.ok ? `${p.rtt} ms` : '-';
-  if (p.ok && p.t - speedAt >= SPEED_EVERY) measureSpeed().then(() => { if (measured != null) { $('down').textContent = mbps(measured); points.at(-1).mbps = Math.round(measured); store.set(pointsKey(), points); } });
+  if (p.ok && p.t - speedAt >= SPEED_EVERY) {
+    const before = measured;
+    measureSpeed().then(() => {
+      if (measured == null) return;
+      $('down').textContent = mbps(measured); points.at(-1).mbps = Math.round(measured); store.set(pointsKey(), points);
+      if (measured < 1 && (before == null || before >= 1)) notify('bw-low', 'Bandwidth is down to a trickle', `${mbps(measured)} right now.`, 300000);
+      if (measured >= 20 && before != null && before < 5) notify('bw-high', 'Bandwidth is back up', `${mbps(measured)} right now.`, 300000);
+    });
+  }
   $('down').textContent = !p.ok ? '-' : measured != null ? mbps(measured) : conn.downlink != null ? (conn.downlink >= 10 ? 'measuring' : mbps(conn.downlink)) : 'n/a';
   if (p.kmh != null) $('speed').textContent = `${p.kmh} km/h`;
   if (lastPos) {
@@ -798,7 +865,10 @@ function drawRibbon() {
   const tint = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
   if (inTrip.length) $('trip-sum').replaceChildren(tint('soft-bad', `Offline ${dur(off * 1000)}`), ' so far, ', tint('soft-good', `${Math.round(good / total * 100)}% good`));
   else $('trip-sum').textContent = '';
-  const next = stops.find(s => s.t > now);
+  const next = stops.find(s => s.t > now), dest = stops.at(-1);
+  if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))} min, at ${hhmm(next.t)}.`, 3600000);
+  if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify('arrive-10', `${dest.name} in about ${Math.round((dest.t - now) / 60000)} min`, `Arriving at ${hhmm(dest.t)}.`, 3600000);
+  if (dest && dest.t - now <= 120000 && dest.t > now) notify('arrive-2', `Arriving in ${dest.name}`, `At ${hhmm(dest.t)}, in about 2 min.`, 3600000);
   const placed = { above: -Infinity, below: -Infinity };
   stops.forEach((s, i) => {
     const sx = x(s.t), end = i === 0 || i === stops.length - 1;
@@ -903,15 +973,38 @@ $('setup').querySelector('form').onsubmit = async e => {
 };
 
 const syncNotify = () => {
-  const on = Notification.permission === 'granted';
-  $('notify').textContent = on ? 'Alerts on' : 'Turn on alerts';
+  const perm = Notification.permission, on = perm === 'granted';
+  $('notify').textContent = on ? 'Alerts on' : 'Alerts';
   $('notify').setAttribute('aria-pressed', on);
-  if (Notification.permission === 'denied') $('notice').textContent = 'Alerts are blocked for this page. Allow notifications in the browser\'s site settings, then reload.';
+  $('alerts-perm').innerHTML = on ? '' : perm === 'denied'
+    ? 'Notifications are blocked for this page. Allow them in the browser\'s site settings, then reload.'
+    : 'Notifications are off. <a href="#" id="alerts-allow">Allow them</a> to get alerts outside this tab.';
+  $('alerts-allow')?.addEventListener('click', e => { e.preventDefault(); askPermission(); });
 };
-$('notify').onclick = () => Notification.requestPermission().then(p => {
+const unlockAudio = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} };
+const askPermission = () => Notification.requestPermission().then(p => {
   syncNotify();
-  if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'You get one when a dead zone is ahead, when the connection drops and when it comes back.'); }
+  if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'Dead zones ahead, drops, recoveries, slowdowns, stops, delays and arrival.'); }
 });
+$('notify').onclick = () => {
+  unlockAudio();
+  for (const box of $('alerts').querySelectorAll('input[data-kind]')) box.checked = !!alertsOn[box.dataset.kind];
+  syncNotify();
+  $('alerts').hidden = false;
+  if (Notification.permission === 'default') askPermission();
+};
+$('alerts').addEventListener('change', e => {
+  if (!e.target.dataset.kind) return;
+  alertsOn[e.target.dataset.kind] = e.target.checked;
+  store.set('netmap-alerts', alertsOn);
+});
+$('alerts-test').onclick = () => {
+  unlockAudio();
+  if (Notification.permission !== 'granted') return askPermission();
+  delete notified.test;
+  notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. If you see this, alerts work.`);
+};
+$('alerts-close').onclick = () => { $('alerts').hidden = true; };
 // Export carries every logged trip, so one file restores the whole coverage map on another browser.
 $('export').onclick = () => {
   const trips = {};
