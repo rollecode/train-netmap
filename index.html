@@ -254,9 +254,12 @@ const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout
   .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)));
 const when = r => Date.parse(r.actualTime || r.liveEstimateTime || r.scheduledTime);
 const hhmm = t => new Date(t).toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+const hours = h => `${h} ${h === 1 ? 'hour' : 'hours'}`;
 const dur = ms => {
   const s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60);
-  return s < 60 ? `${s}s` : m < 60 ? `${m}min ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}min`;
+  // Hours are spelled out, minutes and seconds are glued shorthand, units separated by commas: "1 hour, 10min, 5s".
+  const h = Math.floor(m / 60);
+  return [h ? hours(h) : '', m % 60 || h ? `${m % 60}min` : '', h ? '' : `${s % 60}s`].filter(Boolean).join(', ');
 };
 // Chrome caps navigator.connection.downlink at 10 Mbps.
 const mbps = d => d >= 100 ? `${Math.round(d)} Mbps` : d >= 10 ? `${Math.round(d)} Mbps` : `${d.toFixed(1)} Mbps`;
@@ -451,7 +454,7 @@ async function loadTimetable() {
   }).filter(Boolean);
   store.set(stopsKey(), stops);
   const late = stops.at(-1)?.late ?? 0;
-  if (lastLate != null && Math.abs(late - lastLate) >= 3) notify('delay', late > lastLate ? `Train now ${late} min late` : `Delay down to ${Math.max(0, late)} min`, `${stops.at(-1).name} at ${hhmm(stops.at(-1).t)}.`, 600000);
+  if (lastLate != null && Math.abs(late - lastLate) >= 3) notify('delay', late > lastLate ? `Train now ${late}min late` : `Delay down to ${Math.max(0, late)}min`, `${stops.at(-1).name} at ${hhmm(stops.at(-1).t)}.`, 600000);
   lastLate = late;
   drawRoute();
 }
@@ -639,7 +642,7 @@ function forecast() {
   const kmh = speeds.length ? median(speeds) : 90;
   const mins = m => {
     const v = Math.round(m / (kmh * 1000 / 60));
-    return v < 1 ? 'under a minute' : v < 60 ? `about ${v} min` : `about ${Math.floor(v / 60)} h ${v % 60} min`;
+    return v < 1 ? 'under a minute' : v < 60 ? `about ${v}min` : `about ${hours(Math.floor(v / 60))}, ${v % 60}min`;
   };
   // Distance tells little on a train; time at the current speed is the useful number, distance comes after it.
   const span = m => `${mins(m)}, ${Math.round(m / 1000)} km`;
@@ -651,8 +654,8 @@ function forecast() {
     const next = stops.find(s => s.t > now);
     const drops = points.filter((p, i) => p.t > now - 1800000 && !p.ok && points[i - 1]?.ok).length;
     const parts = [];
-    if (next) parts.push(`Next stop ${next.name} in about ${Math.max(1, Math.round((next.t - now) / 60000))} min.`);
-    if (drops) parts.push(`${drops} ${drops === 1 ? 'drop' : 'drops'} in the last 30 min.`);
+    if (next) parts.push(`Next stop ${next.name} in about ${Math.max(1, Math.round((next.t - now) / 60000))}min.`);
+    if (drops) parts.push(`${drops} ${drops === 1 ? 'drop' : 'drops'} in the last 30min.`);
     el.textContent = parts.join(' ');
     return;
   }
@@ -989,9 +992,9 @@ function drawRibbon() {
       tint('soft-warn', `${Math.round(weak / total * 100)}% weak`), ', ', tint('soft-off', `${Math.round(off / total * 100)}% offline`), '.');
   } else { $('trip-best').textContent = ''; $('trip-worst').textContent = ''; }
   const next = stops.find(s => s.t > now), dest = stops.at(-1);
-  if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))} min, at ${hhmm(next.t)}.`, 3600000);
-  if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify('arrive-10', `${dest.name} in about ${Math.round((dest.t - now) / 60000)} min`, `Arriving at ${hhmm(dest.t)}.`, 3600000);
-  if (dest && dest.t - now <= 120000 && dest.t > now) notify('arrive-2', `Arriving in ${dest.name}`, `At ${hhmm(dest.t)}, in about 2 min.`, 3600000);
+  if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))}min, at ${hhmm(next.t)}.`, 3600000);
+  if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify('arrive-10', `${dest.name} in about ${Math.round((dest.t - now) / 60000)}min`, `Arriving at ${hhmm(dest.t)}.`, 3600000);
+  if (dest && dest.t - now <= 120000 && dest.t > now) notify('arrive-2', `Arriving in ${dest.name}`, `At ${hhmm(dest.t)}, in about 2min.`, 3600000);
   const placed = { above: -Infinity, below: -Infinity };
   stops.forEach((s, i) => {
     const sx = x(s.t), end = i === 0 || i === stops.length - 1;
@@ -1023,7 +1026,7 @@ function drawRibbon() {
   const last = stops.at(-1);
   $('trip-name').innerHTML = '';
   $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}` }));
-  const late = last.late > 0 ? `${last.late} min late` : last.late < 0 ? `${-last.late} min early` : 'on time';
+  const late = last.late > 0 ? `${last.late}min late` : last.late < 0 ? `${-last.late}min early` : 'on time';
   $('trip-eta').innerHTML = '';
   $('trip-eta').append(
     next && next !== last ? `Next ${next.name} ${hhmm(next.t)}, ` : '',

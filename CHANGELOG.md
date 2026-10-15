@@ -1,3 +1,7 @@
+### 1.5.4: 2026-10-15
+
+* Write durations as "1 hour, 10min, 5s" everywhere
+
 ### 1.5.3: 2026-10-15
 
 * Shorten the alert switch labels
