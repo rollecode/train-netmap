@@ -1,3 +1,7 @@
+### 1.5.0: 2026-10-15
+
+* Give each kind of alert its own tone and a coloured icon in the system banner
+
 ### 1.4.9: 2026-10-15
 
 * Slide alert cards in and out like macOS, with a softer shadow

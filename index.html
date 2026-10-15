@@ -483,16 +483,19 @@ let speeds = [], poorSince = null, notified = {}, prefetched = new Set();
 const RANK = { off: 0, poor: 1, fair: 2, good: 3 };
 const NEIGHBOURS = [[0, 0], [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
 
-// A short tone from the page itself, for when the system notification is muted or hidden.
+// A short tone from the page itself, for when the system notification is muted or hidden. Each kind of news has its own shape:
+// falling for bad news, falling three times for a dead zone about to start, rising for good news, two even notes for information.
 let audio = null;
-function beep(n) {
+const TONES = { bad: [[784, .12], [523, .24]], soon: [[784, .1], [587, .1], [392, .32]], good: [[523, .1], [659, .1], [784, .26]], info: [[880, .12], [880, .14]] };
+function beep(name) {
   if (!audio) return;
-  const t0 = audio.currentTime;
-  for (let i = 0; i < n; i++) {
+  let t = audio.currentTime;
+  for (const [f, d] of TONES[name] || TONES.info) {
     const o = audio.createOscillator(), g = audio.createGain();
-    o.type = 'sine'; o.frequency.value = i % 2 ? 1046 : 784;
-    g.gain.setValueAtTime(0, t0 + i * .18); g.gain.linearRampToValueAtTime(.25, t0 + i * .18 + .02); g.gain.linearRampToValueAtTime(0, t0 + i * .18 + .15);
-    o.connect(g).connect(audio.destination); o.start(t0 + i * .18); o.stop(t0 + i * .18 + .16);
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.25, t + .02); g.gain.linearRampToValueAtTime(0, t + d);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + d + .02);
+    t += d + .05;
   }
 }
 // Which alert kinds are on, kept in the browser.
@@ -517,12 +520,12 @@ function notify(kind, title, body, gap = 180000) {
   titleFlash = title;
   setTimeout(() => { if (titleFlash === title) titleFlash = ''; render(); }, 20000);
   render();
-  if (alertsOn.sound) beep(sticky ? 3 : 2);
+  if (alertsOn.sound) beep(kind === 'drop-soon' ? 'soon' : tone === 'bad' ? 'bad' : tone === 'warn' ? 'info' : 'good');
   // The panel reports what became of the system banner, so a missing one can be traced to the browser or to macOS.
   const report = text => { $('alerts-last').textContent += ` ${text}`; };
   if (!canNotify()) return report(Notification.permission === 'denied' ? 'No system banner: notifications are blocked for this page.' : 'No system banner: notifications not allowed yet.');
   try {
-    const n = new Notification(title, { body, tag: kind, requireInteraction: sticky });
+    const n = new Notification(title, { body, tag: kind, requireInteraction: sticky, icon: `icon-${tone || 'good'}.png` });
     let shown = false;
     n.onshow = () => { shown = true; report('System banner shown.'); };
     n.onerror = () => report('System banner failed: the browser could not display it. Check System Settings, Notifications, and that the browser is allowed there.');
