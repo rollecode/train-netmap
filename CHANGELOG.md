@@ -1,3 +1,7 @@
+### 1.4.4: 2026-10-15
+
+* Offer Import data on the first screen, and resume the imported trip
+
 ### 1.4.3: 2026-10-15
 
 * Close the trip and alerts panels with Esc or a click outside

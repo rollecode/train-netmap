@@ -195,6 +195,7 @@
     </div>
     <div class="submit">
       <button class="primary" type="submit">Track trip</button>
+      <button type="button" id="setup-import">Import data</button>
       <button type="button" id="setup-cancel">Cancel</button>
     </div>
     <p id="setup-msg" role="alert"></p>
@@ -1116,6 +1117,7 @@ $('export').onclick = () => {
   a.click();
 };
 $('import').onclick = () => $('import-file').click();
+$('setup-import').onclick = () => $('import-file').click();
 $('import-file').onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -1129,7 +1131,9 @@ $('import-file').onchange = async e => {
       added += merged.length - have.length;
       if (!store.set(k, merged)) return;
     }
+    if (!trip && data.trip && [today, localDate(Date.now() - 86400000)].includes(data.trip.date)) store.set('netmap-trip', data.trip);
     $('notice').textContent = `Imported ${added} samples from ${Object.keys(trips).length} trips.`;
+    $('setup-msg').textContent = `Imported ${added} samples. Loading.`;
     setTimeout(() => location.reload(), 1500);
   } catch { $('notice').textContent = 'That file is not a train netmap export.'; }
 };
