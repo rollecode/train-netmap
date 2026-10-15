@@ -1,3 +1,11 @@
+### 1.1.0: 2026-10-15
+
+* Forecast from Speedtest open data where own trips have none
+* Show the forecast in minutes, distance after it
+* Send a test alert when alerts are turned on, keep a record on the page
+* Send the Digitraffic-User header for a higher request rate
+* Move the trip summary under the forecast
+
 ### 1.0.0: 2026-10-15
 
 * Follow the train live with speed, route and stops on the map
