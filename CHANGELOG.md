@@ -1,3 +1,7 @@
+### 1.4.1: 2026-10-15
+
+* Explain a missing direct train and what to enter instead
+
 ### 1.4.0: 2026-10-15
 
 * Add start.command and start.sh, which serve the page locally so system notifications stick

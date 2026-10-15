@@ -1011,7 +1011,7 @@ async function suggestTrains() {
       value: o.label, label: `${stationName(from)} ${hhmm(o.dep)}, ${stationName(to)} ${hhmm(o.arr)}`
     })));
     if (autoTrain && opts[0]) $('train-no').value = opts[0].label;
-    $('setup-msg').textContent = opts.length ? '' : `No train from ${stationName(from)} to ${stationName(to)} in the next few hours. Type the train if you know it.`;
+    $('setup-msg').textContent = opts.length ? '' : `No direct train from ${stationName(from)} to ${stationName(to)} in the next few hours. If you changed trains, use the station where you boarded this one, or type the train, like IC 63.`;
   } catch { suggestedFor = ''; }
 }
 for (const id of ['from', 'to']) $(id).addEventListener('input', suggestTrains);
@@ -1035,7 +1035,7 @@ $('setup').querySelector('form').onsubmit = async e => {
     let train = trainNo($('train-no').value);
     if (!train) {
       const [best] = await findTrains(from, to);
-      if (!best) throw new Error(`No train from ${stationName(from)} to ${stationName(to)} in the next few hours. Type the train if you know it.`);
+      if (!best) throw new Error(`No direct train from ${stationName(from)} to ${stationName(to)} in the next few hours. If you changed trains, use the station where you boarded this one, or type the train, like IC 63.`);
       train = String(best.t.trainNumber);
     }
     trip = { train, from, to, date: today };
@@ -1044,7 +1044,7 @@ $('setup').querySelector('form').onsubmit = async e => {
     $('setup').hidden = true;
     startTrip();
   } catch (err) {
-    msg.textContent = err.message.startsWith('No train') ? err.message : 'Could not reach Digitraffic. Check the connection and try again.';
+    msg.textContent = err.message.startsWith('No direct train') ? err.message : 'Could not reach Digitraffic. Check the connection and try again.';
   } finally {
     btn.disabled = false; btn.textContent = 'Track trip';
   }
