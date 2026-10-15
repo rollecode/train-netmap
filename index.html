@@ -42,8 +42,8 @@
   #detail:has(#arrive:empty):has(#trip-sum:empty) { display: none; }
   #arrive b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
   #trip-sum { opacity: .7; font-size: 13px; margin-top: 10px; }
-  #trip-best { opacity: .7; font-size: 13px; }
-  #trip-best:empty { display: none; }
+  #trip-best, #trip-worst { opacity: .7; font-size: 13px; }
+  #trip-best:empty, #trip-worst:empty { display: none; }
   .soft-warn { color: #ecc97a; }
   .soft-off { color: #9fb0bf; }
   .soft-bad { color: #f0a097; }
@@ -164,7 +164,7 @@
     <li><b id="outages">0</b>outages</li>
   </ul>
   <p id="forecast"></p>
-  <p id="detail"><span id="arrive"></span><span id="trip-sum"></span><span id="trip-best"></span></p>
+  <p id="detail"><span id="arrive"></span><span id="trip-sum"></span><span id="trip-best"></span><span id="trip-worst"></span></p>
   <p id="notice"></p>
 </header>
 
@@ -984,9 +984,10 @@ function drawRibbon() {
   const weak = inTrip.filter(p => p.ok && quality(p) !== 'good').reduce((a, p) => a + secs(p), 0);
   if (stretches.length >= 2) {
     const best = stretches.reduce((a, b) => b.share > a.share ? b : a), worst = stretches.reduce((a, b) => b.share < a.share ? b : a);
-    $('trip-best').replaceChildren('Best connection between ', tint('soft-good', best.name), ', worst between ', tint('soft-bad', worst.name), '. ',
+    $('trip-best').replaceChildren('Best connection between ', tint('soft-good', best.name), '.');
+    $('trip-worst').replaceChildren('Worst connection between ', tint('soft-bad', worst.name), '. ',
       tint('soft-warn', `${Math.round(weak / total * 100)}% weak`), ', ', tint('soft-off', `${Math.round(off / total * 100)}% offline`), '.');
-  } else $('trip-best').textContent = '';
+  } else { $('trip-best').textContent = ''; $('trip-worst').textContent = ''; }
   const next = stops.find(s => s.t > now), dest = stops.at(-1);
   if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))} min, at ${hhmm(next.t)}.`, 3600000);
   if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify('arrive-10', `${dest.name} in about ${Math.round((dest.t - now) / 60000)} min`, `Arriving at ${hhmm(dest.t)}.`, 3600000);

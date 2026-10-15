@@ -1,6 +1,7 @@
 ### 1.5.3: 2026-10-15
 
 * Shorten the alert switch labels
+* Put the worst stretch on its own line
 
 ### 1.5.2: 2026-10-15
 
