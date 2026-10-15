@@ -1,7 +1,7 @@
 ### 1.4.7: 2026-10-15
 
 * Ask for notification permission as soon as the alerts panel opens on localhost
-* Make the test alert button green
+* Make the test alert button green, add an Enable system notifications button
 
 ### 1.4.6: 2026-10-15
 

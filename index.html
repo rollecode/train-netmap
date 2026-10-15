@@ -76,7 +76,8 @@
   #setup[hidden], .overlay[hidden] { display: none; }
   #setup form, .overlay form { width: min(560px, 100%); }
   #setup h2, .overlay h2 { margin: 0 0 28px; font-size: 36px; line-height: 1.1; font-weight: 650; letter-spacing: -.02em; }
-  #alerts-perm { margin: -12px 0 20px; color: var(--muted); }
+  #alerts-perm { margin: -12px 0 16px; color: var(--muted); }
+  #alerts-enable[hidden] { display: none; }
   #alerts-perm:empty { display: none; }
   #alerts-perm a { color: var(--fg); }
   #alerts-last { margin: 20px 0 0; color: var(--muted); }
@@ -207,6 +208,7 @@
   <form>
     <h2>Alerts</h2>
     <p id="alerts-perm"></p>
+    <p><button type="button" class="primary" id="alerts-enable">Enable system notifications</button></p>
     <div class="checks">
       <label><input type="checkbox" data-kind="deadzone" checked> Dead zone ahead, 3 minutes and 1 minute before</label>
       <label><input type="checkbox" data-kind="offline" checked> Connection dropped</label>
@@ -1075,15 +1077,15 @@ const syncNotify = () => {
   $('notify').setAttribute('aria-pressed', on);
   const how = isFile ? ' A page opened from a file usually cannot get them in Chrome; serve the folder with <code>python3 -m http.server 8080</code> and open <code>http://localhost:8080/</code> instead.' : '';
   $('alerts-perm').innerHTML = on
-    ? 'System notifications are on. The tone and the alert line under the readings work regardless.'
+    ? 'System notifications are on. The cards, tone and title work regardless.'
     : (perm === 'denied'
       ? `System notifications are blocked for this page.${how} The cards, tone and title work anyway.`
-      : `System notifications are off.${asked ? '' : ' <a href="#" id="alerts-allow">Allow them</a> to get banners outside this tab.'}${how} The cards, tone and title work anyway.`)
+      : `System notifications are off, so alerts show only inside this tab.${how}`)
       + (permAnswer ? ` Browser answered: ${permAnswer}.` : '');
-  $('alerts-allow')?.addEventListener('click', e => { e.preventDefault(); askPermission(); });
+  $('alerts-enable').hidden = on || perm === 'denied';
 };
 const unlockAudio = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} };
-const askPermission = () => asked ? Promise.resolve() : (asked = true, Notification.requestPermission().then(p => {
+const askPermission = () => (asked = true, Notification.requestPermission().then(p => {
   permAnswer = p;
   syncNotify();
   if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'Dead zones ahead, drops, recoveries, slowdowns, stops, delays and arrival.'); }
@@ -1102,9 +1104,10 @@ $('alerts').addEventListener('change', e => {
   alertsOn[e.target.dataset.kind] = e.target.checked;
   store.set('netmap-alerts', alertsOn);
 });
+$('alerts-enable').onclick = () => { unlockAudio(); askPermission(); };
 $('alerts-test').onclick = () => {
   unlockAudio();
-  if (servedOverHttp && Notification.permission === 'default' && !asked) return askPermission();
+  if (!canNotify() && Notification.permission !== 'denied') return askPermission();
   delete notified.test;
   notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. The tone, the title and the line under the readings are the alert; a system banner comes only with permission.`);
 };
