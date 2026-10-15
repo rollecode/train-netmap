@@ -148,6 +148,8 @@
   .mast.op5, .mast.op21 { --c: #4f8cff; }
   .mast.op91, .mast.op36 { --c: #b073ff; }
   .mast.op12, .mast.op3 { --c: #ff6fb1; }
+  .mast.guessed { opacity: .55; }
+  .mast.guessed i { animation: none; }
   .mast i, .mast b { position: absolute; inset: 0; border-radius: 50%; }
   .mast b { background: var(--c); transform: scale(.4); box-shadow: 0 0 3px var(--c); }
   .mast i { background: var(--c); opacity: 0; animation: beacon 3s ease-out infinite; animation-delay: var(--d); }
@@ -538,13 +540,13 @@ function drawMasts() {
   const step = Math.max(1, Math.ceil(inView.length / 500));
   // The measured range is where a site has been seen from; with more than a few dozen sites in view the circles blur into a blob, so they wait for a closer zoom.
   const close = map.getZoom() >= 11 && inView.length <= 80;
-  for (const [lat, lon, net, range, samples, radios] of inView.filter((_, i) => i % step === 0)) {
+  for (const [lat, lon, net, range, samples, radios, onMast] of inView.filter((_, i) => i % step === 0)) {
     if (close) L.circle([lat, lon], { radius: range, stroke: false, fillColor: colour[net] || '#9fb0bf', fillOpacity: .05, interactive: false }).addTo(mastLayer);
     const tech = RADIOS.filter(([bit]) => radios & bit).map(([, name]) => name).join(', ');
     L.marker([lat, lon], {
-      icon: L.divIcon({ className: `mast op${net}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
+      icon: L.divIcon({ className: `mast op${net}${onMast ? '' : ' guessed'}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
       keyboard: false
-    }).bindTooltip(`${OPERATORS[net] || 'MNC ' + net}, ${tech}<br>seen up to ${range >= 1000 ? (range / 1000).toFixed(1) + ' km' : range + ' m'} away, ${samples} measurements`).addTo(mastLayer);
+    }).bindTooltip(`${OPERATORS[net] || 'MNC ' + net}, ${tech}<br>seen up to ${range >= 1000 ? (range / 1000).toFixed(1) + ' km' : range + ' m'} away, ${samples} measurements<br>${onMast ? 'at a mapped mast' : 'placed where it was seen from, the mast itself is unmapped'}`).addTo(mastLayer);
   }
 }
 function setMasts(on) {
