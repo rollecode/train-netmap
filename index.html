@@ -78,6 +78,16 @@
   #alerts-perm { margin: -12px 0 20px; color: var(--muted); }
   #alerts-perm:empty { display: none; }
   #alerts-perm a { color: var(--fg); }
+  #alerts-last { margin: 20px 0 0; color: var(--muted); }
+  #alerts-last:empty { display: none; }
+  #toasts { position: absolute; top: 72px; right: 32px; z-index: 1000; display: grid; gap: 8px; width: min(360px, calc(100% - 32px)); }
+  .toast { background: var(--ink-2); border-left: 4px solid var(--good); border-radius: 8px; padding: 12px 14px; cursor: pointer; box-shadow: 0 6px 20px rgba(0, 0, 0, .45); animation: toast-in .25s cubic-bezier(.16, 1, .3, 1); }
+  .toast.bad { border-left-color: var(--poor); }
+  .toast.warn { border-left-color: var(--fair); }
+  .toast b { display: block; font-size: 15px; margin-bottom: 2px; }
+  .toast span { color: var(--muted); font-size: 13px; }
+  @keyframes toast-in { from { transform: translateY(-8px); opacity: 0; } }
+  @media (max-width: 720px) { #toasts { top: 56px; right: 16px; } }
   .checks { display: grid; gap: 10px; }
   .checks label { display: flex; align-items: center; gap: 12px; cursor: pointer; }
   .checks input { width: 18px; height: 18px; margin: 0; accent-color: var(--good); }
@@ -189,6 +199,7 @@
     <p id="setup-msg" role="alert"></p>
   </form>
 </div>
+<div id="toasts" aria-live="polite"></div>
 <div id="alerts" class="overlay" hidden>
   <form>
     <h2>Alerts</h2>
@@ -209,6 +220,7 @@
       <button type="button" id="alerts-test">Send a test alert</button>
       <button type="button" id="alerts-close">Done</button>
     </div>
+    <p id="alerts-last"></p>
   </form>
 </div>
 <datalist id="stations"></datalist>
@@ -478,11 +490,18 @@ function notify(kind, title, body, gap = 180000) {
   const sticky = ['drop', 'drop-soon', 'offline', 'back', 'eta-back', 'arrive-2'].includes(kind);
   $('notice').textContent = `Alert ${hhmm(Date.now())}: ${title}. ${body}`;
   setTimeout(() => { if ($('notice').textContent.startsWith('Alert ')) $('notice').textContent = ''; }, 120000);
+  $('alerts-last').textContent = `Last alert ${hhmm(Date.now())}: ${title}. ${body}`;
+  const tone = ['drop', 'drop-soon', 'offline', 'slower', 'bw-low', 'delay'].includes(kind) ? 'bad' : ['eta-back', 'arrive-10', 'arrive-2'].includes(kind) || kind.startsWith('stop-') ? 'warn' : '';
+  const toast = Object.assign(document.createElement('div'), { className: `toast ${tone}`, role: 'status' });
+  toast.append(Object.assign(document.createElement('b'), { textContent: title }), Object.assign(document.createElement('span'), { textContent: body }));
+  toast.onclick = () => toast.remove();
+  $('toasts').prepend(toast);
+  setTimeout(() => toast.remove(), sticky ? 60000 : 20000);
   titleFlash = title;
   setTimeout(() => { if (titleFlash === title) titleFlash = ''; render(); }, 20000);
   render();
   if (alertsOn.sound) beep(sticky ? 3 : 2);
-  if (Notification.permission === 'granted') try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
+  if (canNotify()) try { new Notification(title, { body, tag: kind, requireInteraction: sticky }); } catch {}
 }
 
 // Speedtest by Ookla open data: a 610 m grid of measured mobile speed for Finland, the baseline wherever own trips have nothing.
@@ -1030,32 +1049,32 @@ $('setup').querySelector('form').onsubmit = async e => {
   }
 };
 
-let permAnswer = '';
+let permAnswer = '', asked = false;
+const canNotify = () => Notification.permission === 'granted' || permAnswer === 'granted';
 const syncNotify = () => {
-  const perm = Notification.permission, on = perm === 'granted', isFile = location.protocol === 'file:';
+  const perm = Notification.permission, on = canNotify(), isFile = location.protocol === 'file:';
   $('notify').textContent = on ? 'Alerts on' : 'Alerts';
   $('notify').setAttribute('aria-pressed', on);
   const how = isFile ? ' A page opened from a file usually cannot get them in Chrome; serve the folder with <code>python3 -m http.server 8080</code> and open <code>http://localhost:8080/</code> instead.' : '';
   $('alerts-perm').innerHTML = on
     ? 'System notifications are on. The tone and the alert line under the readings work regardless.'
     : (perm === 'denied'
-      ? `System notifications are blocked for this page.${how} The tone and the alert line under the readings work anyway.`
-      : `System notifications are off. <a href="#" id="alerts-allow">Allow them</a> to get alerts outside this tab.${how} The tone and the alert line under the readings work anyway.`)
+      ? `System notifications are blocked for this page.${how} The cards, tone and title work anyway.`
+      : `System notifications are off.${asked ? '' : ' <a href="#" id="alerts-allow">Allow them</a> to get banners outside this tab.'}${how} The cards, tone and title work anyway.`)
       + (permAnswer ? ` Browser answered: ${permAnswer}.` : '');
   $('alerts-allow')?.addEventListener('click', e => { e.preventDefault(); askPermission(); });
 };
 const unlockAudio = () => { try { audio ??= new (window.AudioContext || window.webkitAudioContext)(); audio.resume(); } catch {} };
-const askPermission = () => Notification.requestPermission().then(p => {
+const askPermission = () => asked ? Promise.resolve() : (asked = true, Notification.requestPermission().then(p => {
   permAnswer = p;
   syncNotify();
   if (p === 'granted') { delete notified.test; notify('test', 'Alerts are on', 'Dead zones ahead, drops, recoveries, slowdowns, stops, delays and arrival.'); }
-}).catch(e => { permAnswer = e.message; syncNotify(); });
+}).catch(e => { permAnswer = e.message; syncNotify(); }));
 $('notify').onclick = () => {
   unlockAudio();
   for (const box of $('alerts').querySelectorAll('input[data-kind]')) box.checked = !!alertsOn[box.dataset.kind];
   syncNotify();
   $('alerts').hidden = false;
-  if (Notification.permission === 'default') askPermission();
 };
 $('alerts').addEventListener('change', e => {
   if (!e.target.dataset.kind) return;
@@ -1064,7 +1083,6 @@ $('alerts').addEventListener('change', e => {
 });
 $('alerts-test').onclick = () => {
   unlockAudio();
-  if (Notification.permission === 'default') askPermission();
   delete notified.test;
   notify('test', 'Test alert', `Sent at ${hhmm(Date.now())}. The tone, the title and the line under the readings are the alert; a system banner comes only with permission.`);
 };

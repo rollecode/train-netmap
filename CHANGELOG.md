@@ -1,3 +1,8 @@
+### 1.3.4: 2026-10-15
+
+* Show every alert as a card on the page, and the last one in the alerts panel
+* Ask for notification permission once, only from the panel's link
+
 ### 1.3.3: 2026-10-15
 
 * Play the tone, flash the title and write the alert line without notification permission
