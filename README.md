@@ -22,7 +22,7 @@ Every 5 seconds the page sends a 300-byte request to Cloudflare and times the an
 
 The train's position and speed come from Digitraffic every 15 seconds. While offline, the position is moved along the track at the last known speed, so dead zones are painted roughly where they happened.
 
-The track is the same train's GPS trail from an earlier day, fetched once per train. The coverage hexagons are about 1.2 km wide and are built from every trip you have logged in this browser, which is also what the forecast ("Connection should be back in about 4 min") reads from. On a line you have not travelled before it has nothing to say.
+The track is the same train's GPS trail from an earlier day, fetched once per train. The forecast ("Connection should be back in about 4 min") reads two things: the 1.2 km hexagons built from every trip you have logged in this browser, and under them Ookla's Speedtest results for Finland in 610 m tiles, merged from the last four quarters and shipped in `data/fi-mobile.js`. Your own trips win where they exist. Where no one has run a Speedtest within 3 km of the track, the forecast expects no signal.
 
 ## Offline
 
@@ -41,5 +41,6 @@ A service worker then keeps the page and every tile it has seen.
 - Train positions, timetables and the track: [Fintraffic Digitraffic](https://www.digitraffic.fi), CC BY 4.0.
 - Map tiles: [CARTO](https://carto.com) on OpenStreetMap data.
 - Latency and bandwidth: `cp.cloudflare.com` and `speed.cloudflare.com`.
+- Coverage baseline: [Speedtest by Ookla Global Mobile Network Performance Maps](https://www.ookla.com/ookla-for-good/open-data), CC BY-NC-SA 4.0. That licence covers `data/fi-mobile.js` only; the code is MIT.
 
 Nothing else leaves the browser. Export writes every trip to one JSON file, Import merges such a file back in, and the page warns when browser storage is full.

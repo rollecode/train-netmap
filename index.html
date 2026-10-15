@@ -227,9 +227,10 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
 const map = L.map('map', { zoomControl: false }).setView([63.2, 27.2], 8);
 const tiles = L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
   maxZoom: 19,
-  attribution: 'Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>, trains © <a href="https://www.digitraffic.fi">Fintraffic</a> CC BY 4.0'
+  attribution: 'Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>, trains © <a href="https://www.digitraffic.fi">Fintraffic</a> CC BY 4.0, coverage © <a href="https://www.ookla.com/ookla-for-good/open-data">Ookla</a> CC BY-NC-SA 4.0'
 });
 if (CARTO_KEY) tiles.addTo(map);
+const baseLayer = L.layerGroup().addTo(map);
 const hexLayer = L.layerGroup().addTo(map);
 const trailLayer = L.layerGroup().addTo(map);
 function addTrail(prev, p) {
@@ -387,6 +388,7 @@ async function loadTrack() {
     track = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
     store.set(trackKey(), { date: d, pts: track });
     drawRoute();
+    drawBaseline();
     return;
   }
 }
@@ -409,7 +411,41 @@ function notify(kind, title, body, gap = 180000) {
   new Notification(title, { body });
 }
 
-// The track can run a kilometre or two off the straight line between stops, so look at the surrounding ring of hexes too.
+// Speedtest by Ookla open data: a 610 m grid of measured mobile speed for Finland, the baseline wherever own trips have nothing.
+let ookla = null;
+const tileScript = document.createElement('script');
+tileScript.src = 'data/fi-mobile.js';
+tileScript.onload = () => { ookla = new Map(window.NETMAP_TILES.map(([q, d, l, t]) => [q, { d, l, t }])); drawBaseline(); forecast(); };
+document.head.appendChild(tileScript);
+function tileXY(lat, lon, z = 16) {
+  const n = 2 ** z, s = Math.sin(lat * Math.PI / 180);
+  return [Math.floor((lon + 180) / 360 * n), Math.floor((.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * n)];
+}
+function quadkey(x, y) { let v = 0; for (let i = 15; i >= 0; i--) v = v * 4 + (((x >> i) & 1) | (((y >> i) & 1) << 1)); return v; }
+function tileBounds(x, y, z = 16) {
+  const n = 2 ** z, lon = i => i / n * 360 - 180, lat = j => Math.atan(Math.sinh(Math.PI * (1 - 2 * j / n))) * 180 / Math.PI;
+  return [[lat(y + 1), lon(x)], [lat(y), lon(x + 1)]];
+}
+const tileQuality = o => o.l < 150 && o.d >= 5 ? 'good' : o.l < 400 && o.d >= 1 ? 'fair' : 'poor';
+// Only a fifth of the tiles along a rural line hold tests, so the nearest tested tile stands in: as is within 1.2 km,
+// one step worse out to 3 km, and no signal beyond that, since nobody has managed a test within 3 km of the track.
+const WORSE = { good: 'fair', fair: 'poor', poor: 'poor' };
+function ooklaAt(lat, lon) {
+  if (!ookla) return null;
+  const [x, y] = tileXY(lat, lon);
+  for (let r = 0; r <= 5; r++) {
+    let best = null;
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+      const o = ookla.get(quadkey(x + dx, y + dy));
+      if (o && (!best || o.t > best.t)) best = o;
+    }
+    if (best) return r <= 2 ? tileQuality(best) : WORSE[tileQuality(best)];
+  }
+  return 'off';
+}
+
+// Own hexes win; the track can run a kilometre or two off the straight line between stops, so the surrounding ring counts too.
 function coverageAt(lat, lon) {
   const [q, r] = hexOf(lat, lon);
   let best = null;
@@ -417,9 +453,25 @@ function coverageAt(lat, lon) {
     const h = hexes.get((q + dq) + ',' + (r + dr));
     if (h && h.n >= 2 && (!best || h.n > best.n)) best = h;
   }
-  if (!best) return null;
-  const m = best.rtts.length ? median(best.rtts) : null;
-  return best.off / best.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m });
+  if (best) {
+    const m = best.rtts.length ? median(best.rtts) : null;
+    return best.off / best.n > .5 || m === null ? 'off' : quality({ ok: true, rtt: m });
+  }
+  return ooklaAt(lat, lon);
+}
+
+// Speedtest tiles along the trip's track, drawn faintly under the hexes.
+function drawBaseline() {
+  baseLayer.clearLayers();
+  if (!ookla || !track.length) return;
+  const seen = new Set();
+  for (const [lat, lon] of track) {
+    const [x, y] = tileXY(lat, lon), k = quadkey(x, y);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    const o = ookla.get(k);
+    if (o) L.rectangle(tileBounds(x, y), { stroke: false, fillColor: COLORS[tileQuality(o)], fillOpacity: .16, interactive: false }).addTo(baseLayer);
+  }
 }
 
 function aheadPath(step = 500, max = 60000, from = lastPos) {
@@ -472,8 +524,8 @@ function forecast() {
   if (reach < 5000) {
     const next = stops.find(s => s.t > now);
     const drops = points.filter((p, i) => p.t > now - 1800000 && !p.ok && points[i - 1]?.ok).length;
-    const parts = ['No earlier trips on this line, so nothing to forecast from yet.'];
-    if (next) parts.push(`Next stop ${next.name} in about ${Math.max(1, Math.round((next.t - now) / 60000))} min, and towns usually have coverage.`);
+    const parts = [];
+    if (next) parts.push(`Next stop ${next.name} in about ${Math.max(1, Math.round((next.t - now) / 60000))} min.`);
     if (drops) parts.push(`${drops} ${drops === 1 ? 'drop' : 'drops'} in the last 30 min.`);
     el.textContent = parts.join(' ');
     return;
@@ -502,7 +554,7 @@ function forecast() {
     const faster = known.find(p => RANK[p.c] >= RANK.fair);
     if (faster) return say('Faster connection in ', mins(faster.d), '.');
   }
-  say('Earlier trips show steady coverage for the next ', span(reach), '.');
+  say('Coverage data shows a steady connection for the next ', span(reach), '.');
 }
 
 function watchSpeedUp(p) {
@@ -584,6 +636,7 @@ function startTrip() {
   // Cached timetable and track keep the route on screen when the trip starts offline.
   stops = store.get(stopsKey()) || [];
   track = store.get(trackKey())?.pts || [];
+  drawBaseline();
   if (stops.length) { drawRoute(); drawRibbon(); }
   loadTimetable().then(drawRibbon).catch(() => {});
   loadTrack().catch(() => {});
