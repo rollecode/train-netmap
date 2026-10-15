@@ -4,7 +4,7 @@
 
 An **offline-first single html-file page** that follows your train across Finland and records how good the mobile connection is along the way, so the next trip on the same line can tell you when the connection comes back.
 
-<img width="1642" height="1047" alt="Train netmap" src="https://github.com/user-attachments/assets/fae6f96e-d3bc-4123-8cea-f3da810907d1" />
+<img width="1661" height="1037" alt="image" src="https://github.com/user-attachments/assets/5dea2fa3-98c6-43e5-b420-49b38d51ce43" />
 
 ## Quick start
 
