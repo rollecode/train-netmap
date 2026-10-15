@@ -1,3 +1,7 @@
+### 1.8.1: 2026-10-15
+
+* Bring the README up to date with a Features section
+
 ### 1.8.0: 2026-10-15
 
 * Ask to export on arrival, with what the saved trips do for the next one
