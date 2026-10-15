@@ -1,3 +1,7 @@
+### 1.4.6: 2026-10-15
+
+* Show the import result in green
+
 ### 1.4.5: 2026-10-15
 
 * Round the buttons into pills

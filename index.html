@@ -37,6 +37,7 @@
   #notice a { color: var(--fg); }
   #notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   #notice:empty { display: none; }
+  #notice.ok, #setup-msg.ok { color: var(--good); }
   #detail { margin: 4px 0 0; font-size: 15px; color: var(--muted); display: grid; gap: 4px; }
   #detail:has(#arrive:empty):has(#trip-sum:empty) { display: none; }
   #arrive b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1133,7 +1134,9 @@ $('import-file').onchange = async e => {
     }
     if (!trip && data.trip && [today, localDate(Date.now() - 86400000)].includes(data.trip.date)) store.set('netmap-trip', data.trip);
     $('notice').textContent = `Imported ${added} samples from ${Object.keys(trips).length} trips.`;
+    $('notice').className = 'ok';
     $('setup-msg').textContent = `Imported ${added} samples. Loading.`;
+    $('setup-msg').className = 'ok';
     setTimeout(() => location.reload(), 1500);
   } catch { $('notice').textContent = 'That file is not a train netmap export.'; }
 };
