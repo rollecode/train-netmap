@@ -1,3 +1,7 @@
+### 1.6.2: 2026-10-15
+
+* Show the mast reach discs only when zoomed in, and calm the beacons
+
 ### 1.6.1: 2026-10-15
 
 * Colour the masts, brighten their beacons and draw a 3 km disc around each, on by default

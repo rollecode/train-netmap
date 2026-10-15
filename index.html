@@ -144,10 +144,10 @@
   .you i { background: var(--ring); animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
   .mast { --c: #6cb6ff; }
   .mast i, .mast b { position: absolute; inset: 0; border-radius: 50%; }
-  .mast b { background: var(--c); transform: scale(.45); box-shadow: 0 0 6px var(--c); }
+  .mast b { background: var(--c); transform: scale(.4); box-shadow: 0 0 3px var(--c); }
   .mast i { background: var(--c); opacity: 0; animation: beacon 3s ease-out infinite; animation-delay: var(--d); }
   .mast.mobile { --c: var(--good); }
-  @keyframes beacon { 0% { transform: scale(.45); opacity: .8; } 100% { transform: scale(4); opacity: 0; } }
+  @keyframes beacon { 0% { transform: scale(.4); opacity: .55; } 100% { transform: scale(2.6); opacity: 0; } }
   .ribbon-pulse { fill: var(--good); transform-box: fill-box; transform-origin: center; animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
   [data-state="offline"] .ribbon-pulse { fill: var(--poor); }
   [data-state="connecting"] .ribbon-pulse { fill: var(--muted); }
@@ -515,7 +515,8 @@ function drawMasts() {
     if (!b.contains([lat, lon])) continue;
     if (++n > 400) break;
     const c = mobile ? COLORS.good : '#6cb6ff';
-    L.circle([lat, lon], { radius: MAST_REACH, stroke: false, fillColor: c, fillOpacity: .07, interactive: false }).addTo(mastLayer);
+    // The reach discs pile up into a blob over a town, so they only appear once the map is close enough to tell masts apart.
+    if (map.getZoom() >= 11) L.circle([lat, lon], { radius: MAST_REACH, stroke: false, fillColor: c, fillOpacity: .04, interactive: false }).addTo(mastLayer);
     L.marker([lat, lon], {
       icon: L.divIcon({ className: `mast${mobile ? ' mobile' : ''}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
       interactive: false, keyboard: false
