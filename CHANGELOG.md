@@ -1,3 +1,8 @@
+### 1.4.2: 2026-10-15
+
+* Offer the trains running now towards the destination when there is no direct train
+* Start the route at the stop where this train was boarded after a change
+
 ### 1.4.1: 2026-10-15
 
 * Explain a missing direct train and what to enter instead

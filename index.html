@@ -400,7 +400,16 @@ async function findTrains(from, to) {
   // Prefer the train that is between the two stations right now, then the nearest departure.
   options.sort((a, b) => score(a) - score(b));
   function score(o) { return now >= o.dep && now <= o.arr ? 0 : Math.abs(now - o.dep); }
-  return options;
+  if (options.length) return options;
+  // No direct train, so this is a journey with a change: every train running right now that still arrives at the destination.
+  // Trains that left the boarding station today show where a change could have happened; a candidate sharing a station with them ranks first.
+  const reachable = new Set(board.flatMap(t => { const i = t.timeTableRows.findIndex(r => r.stationShortCode === from); return i < 0 ? [] : t.timeTableRows.slice(i + 1).map(r => r.stationShortCode); }));
+  const arrivals = await get(`/live-trains/station/${to}?arrived_trains=0&arriving_trains=30&departed_trains=0&departing_trains=0&include_nonstopping=false`, 20000);
+  return arrivals.filter(t => t.runningCurrently).map(t => {
+    const rows = t.timeTableRows, ai = rows.findIndex(r => r.stationShortCode === to && r.type === 'ARRIVAL');
+    const change = rows.some(r => reachable.has(r.stationShortCode));
+    return ai >= 0 && { t, dep: when(rows[0]), arr: when(rows[ai]), change, label: `${t.trainType} ${t.trainNumber}` };
+  }).filter(o => o && o.arr > now).sort((a, b) => (b.change - a.change) || (a.arr - b.arr));
 }
 
 async function loadTimetable() {
@@ -419,7 +428,10 @@ async function loadTimetable() {
   trainLabel = t.commuterLineID ? `${t.commuterLineID} train` : `${t.trainType} ${t.trainNumber}`;
   const rows = t.timeTableRows.filter(r => r.trainStopping && r.commercialStop);
   const codes = [...new Set(rows.map(r => r.stationShortCode))];
-  const from = trip.from && codes.includes(trip.from) ? trip.from : codes[0];
+  // Boarded from another train: start at the last stop this train left before the first sample, or before now.
+  const t0 = points[0]?.t ?? Date.now();
+  const boarded = [...rows].reverse().find(r => r.type === 'DEPARTURE' && when(r) <= t0)?.stationShortCode;
+  const from = trip.from && codes.includes(trip.from) ? trip.from : boarded && codes.includes(boarded) ? boarded : codes[0];
   const to = trip.to && codes.includes(trip.to) ? trip.to : codes.at(-1);
   const seq = codes.slice(codes.indexOf(from), codes.indexOf(to) + 1);
   stops = seq.map((code, i) => {
@@ -1011,7 +1023,7 @@ async function suggestTrains() {
       value: o.label, label: `${stationName(from)} ${hhmm(o.dep)}, ${stationName(to)} ${hhmm(o.arr)}`
     })));
     if (autoTrain && opts[0]) $('train-no').value = opts[0].label;
-    $('setup-msg').textContent = opts.length ? '' : `No direct train from ${stationName(from)} to ${stationName(to)} in the next few hours. If you changed trains, use the station where you boarded this one, or type the train, like IC 63.`;
+    $('setup-msg').textContent = opts.length ? '' : `No train to ${stationName(to)} is running right now. Type the train, like IC 63.`;
   } catch { suggestedFor = ''; }
 }
 for (const id of ['from', 'to']) $(id).addEventListener('input', suggestTrains);
@@ -1035,7 +1047,7 @@ $('setup').querySelector('form').onsubmit = async e => {
     let train = trainNo($('train-no').value);
     if (!train) {
       const [best] = await findTrains(from, to);
-      if (!best) throw new Error(`No direct train from ${stationName(from)} to ${stationName(to)} in the next few hours. If you changed trains, use the station where you boarded this one, or type the train, like IC 63.`);
+      if (!best) throw new Error(`No direct train to ${stationName(to)} is running right now. Type the train, like IC 63.`);
       train = String(best.t.trainNumber);
     }
     trip = { train, from, to, date: today };
