@@ -1,3 +1,7 @@
+### 1.5.2: 2026-10-15
+
+* Name the best and worst stretch of the trip, with weak and offline shares
+
 ### 1.5.1: 2026-10-15
 
 * Size alert cards to their text and make them more translucent
