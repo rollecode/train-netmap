@@ -34,7 +34,7 @@ The measuring runs in a web worker, which Chrome does not slow down in a hidden 
 
 ## Working on it
 
-After cloning, run `git config core.hooksPath .githooks` once. A post-commit hook then writes `version.js` with the changelog version and the commit hash, which the page shows bottom right.
+After cloning, run `git config core.hooksPath .githooks` once. A pre-commit hook then keeps `version.js` in step with the changelog. The page shows the version bottom right, with the checked-out commit when it is served from the folder.
 
 ## Offline
 
