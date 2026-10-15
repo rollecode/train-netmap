@@ -1,7 +1,7 @@
 // Service worker: keeps the page and the map tiles available with no connection.
 // Only runs when the page is served over http(s); file:// pages cannot register one.
 const SHELL = 'netmap-shell-v1', TILES = 'netmap-tiles-v1';
-const ASSETS = ['./', './index.html', './config.js', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './data/fi-mobile.js', './icon-good.png', './icon-bad.png', './icon-warn.png'];
+const ASSETS = ['./', './index.html', './config.js', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './data/fi-mobile.js', './icon-good.png', './icon-bad.png', './icon-warn.png', './data/fi-masts.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => Promise.all(ASSETS.map(a => c.add(a).catch(() => {})))).then(() => self.skipWaiting()));

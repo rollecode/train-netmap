@@ -1,3 +1,7 @@
+### 1.6.0: 2026-10-15
+
+* Show communication masts from OpenStreetMap as beacons with a Masts switch
+
 ### 1.5.4: 2026-10-15
 
 * Write durations as "1 hour, 10min, 5s" everywhere, and the countdown as "2 hours, 4 minutes, 7 seconds"
