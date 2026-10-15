@@ -18,17 +18,27 @@ A trip can also be preset in the address: `index.html?train=63&from=PM&to=OL`, w
 
 ## Features
 
-🚆 Follows your train live, with speed, the real track and every stop, and keeps the map pinned to it.<br>
-📶 Measures latency every 5 seconds and bandwidth every 2 minutes, from a web worker that keeps going in a hidden tab.<br>
-🗺️ Paints the track and 1.2 km hexagons by connection quality, green, yellow, red and grey, with the measured median in each hexagon's tooltip.<br>
-🔮 Forecasts the connection ahead: dead zones, when it comes back, when it gets faster, in minutes at the train's speed, from your own trips first and Speedtest data where you have none.<br>
-📈 Gets more precise with every trip on a line, in either direction; trips older than 30 days fold into the coverage map so storage never fills.<br>
-🔔 Alerts for dead zones ahead, drops, recoveries, slowdowns, bandwidth, next stop, arrival and delay changes, each with its own tone, a card on the page, the tab title and a system banner.<br>
-🗼 Shows every mapped mast in Finland as a beacon, coloured by operator where OpenCelliD knows it, the Speedtest coverage around them, and the nearest mast to the train.<br>
-📍 Route line at the bottom with all stops, the next one with its time, the delay, and the connection quality of every stretch travelled, plus the best and worst stretch of the trip.<br>
-⏱️ Counts down to the destination to the second, and shows bandwidth and speed in the tab title with a tab icon that glows with the connection.<br>
-📴 Works offline: Leaflet, the station list, the timetable, the track, the samples and the map tiles along the route are kept in the browser.<br>
-💾 Keeps every trip in the browser, asks you to export on arrival, and imports the file back into a cleared browser or another computer.
+🚆 **Follows your train live**, with speed, the real track and every stop, and keeps the map pinned to it.<br>
+
+📶 **Measures latency every 5 seconds and bandwidth every 2 minutes**, from a web worker that keeps going in a hidden tab.<br>
+
+🗺️ **Paints the track and 1.2 km hexagons by connection quality**, green, yellow, red and grey, with the measured median in each hexagon's tooltip.<br>
+
+🔮 **Forecasts the connection ahead**: dead zones, when it comes back, when it gets faster, in minutes at the train's speed, from your own trips first and Speedtest data where you have none.<br>
+
+📈 **Gets more precise with every trip on a line**, in either direction; trips older than 30 days fold into the coverage map so storage never fills.<br>
+
+🔔 **Alerts for dead zones ahead**, drops, recoveries, slowdowns, bandwidth, next stop, arrival and delay changes, each with its own tone, a card on the page, the tab title and a system banner.<br>
+
+🗼 **Shows every mapped mast in Finland as a beacon**, coloured by operator where OpenCelliD knows it, the Speedtest coverage around them, and the nearest mast to the train.<br>
+
+📍 **Route line at the bottom with all stops**, the next one with its time, the delay, and the connection quality of every stretch travelled, plus the best and worst stretch of the trip.<br>
+
+⏱️ **Counts down to the destination to the second**, and shows bandwidth and speed in the tab title with a tab icon that glows with the connection.<br>
+
+📴 **Works offline: Leaflet, the station list**, the timetable, the track, the samples and the map tiles along the route are kept in the browser.<br>
+
+💾 **Keeps every trip in the browser**, asks you to export on arrival, and imports the file back into a cleared browser or another computer.
 
 ## How it measures
 
@@ -54,7 +64,7 @@ Leaflet is in the repository, and the station list, timetable, track and samples
 
 After cloning, run `git config core.hooksPath .githooks` once. A pre-commit hook then keeps `version.js` in step with the changelog. The page shows the version bottom right, with the checked-out commit when it is served from the folder. Every batch of changes gets a changelog entry, and a push that touches `CHANGELOG.md` publishes the release.
 
-## Data and privacy
+## Data, liceenses and privacy
 
 - Train positions, timetables and the track: [Fintraffic Digitraffic](https://www.digitraffic.fi), CC BY 4.0.
 - Map tiles: [CARTO](https://carto.com) on OpenStreetMap data.
