@@ -31,6 +31,8 @@
   [data-state="online"] #state { color: var(--good); }
   [data-state="offline"] #state { color: var(--poor); }
   #for { font-weight: 400; color: var(--fg); }
+  #for .short { display: none; }
+  @media (max-width: 1100px) { #for .long { display: none; } #for .short { display: inline; } }
   .readings { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 28px; color: var(--muted); }
   #forecast { margin: 12px 0 0; font-size: 15px; color: var(--muted); }
   #forecast:empty { display: none; }
@@ -290,6 +292,12 @@ const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout
 const when = r => Date.parse(r.actualTime || r.liveEstimateTime || r.scheduledTime);
 const hhmm = t => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const hours = h => `${h} ${h === 1 ? 'hour' : 'hours'}`;
+// The same span in full words, for the places with room for it: "1 hour, 12 minutes, 40 seconds".
+const durLong = ms => {
+  const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
+  const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return [h ? unit(h, 'hour') : '', m ? unit(m, 'minute') : '', !h && sec ? unit(sec, 'second') : ''].filter(Boolean).join(', ') || '0 seconds';
+};
 const dur = ms => {
   const s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60);
   // Hours are spelled out, minutes and seconds are glued shorthand, units separated by commas: "1 hour, 10min, 5s".
@@ -1074,7 +1082,11 @@ function render() {
   $('status').dataset.state = state;
   document.body.dataset.state = state;
   $('state').textContent = { connecting: 'Connecting', online: 'Online', offline: 'Offline' }[state];
-  $('for').textContent = online === null ? '' : `for ${dur(Date.now() - since)}` + (online === false && offlineReason ? `, ${offlineReason}` : '');
+  if (online === null) $('for').textContent = '';
+  else {
+    const span = Date.now() - since, reason = online === false && offlineReason ? `, ${offlineReason}` : '';
+    $('for').replaceChildren('for ', Object.assign(document.createElement('span'), { className: 'long', textContent: durLong(span) }), Object.assign(document.createElement('span'), { className: 'short', textContent: dur(span) }), reason);
+  }
   $('outages').textContent = outages;
   const dest = stops.at(-1), left = dest ? dest.t - Date.now() : 0;
   if (dest && left > 0) {

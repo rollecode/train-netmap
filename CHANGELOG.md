@@ -1,3 +1,7 @@
+### 1.8.2: 2026-10-15
+
+* Spell out the online and offline time in full on wide screens
+
 ### 1.8.1: 2026-10-15
 
 * Bring the README up to date with a Features section
