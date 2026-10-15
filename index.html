@@ -458,7 +458,12 @@ function forecast() {
   const path = aheadPath();
   if (!path.length) { el.textContent = ''; return; }
   const kmh = speeds.length ? median(speeds) : 90;
-  const mins = m => { const v = m / (kmh * 1000 / 60); return v < 1 ? 'under a minute' : `about ${Math.round(v)} min`; };
+  const mins = m => {
+    const v = Math.round(m / (kmh * 1000 / 60));
+    return v < 1 ? 'under a minute' : v < 60 ? `about ${v} min` : `about ${Math.floor(v / 60)} h ${v % 60} min`;
+  };
+  // Distance tells little on a train; time at the current speed is the useful number, distance comes after it.
+  const span = m => `${mins(m)}, ${Math.round(m / 1000)} km`;
   const ahead = path.map(p => ({ ...p, c: coverageAt(p.lat, p.lon) }));
   const known = ahead.filter(p => p.c);
   // Fewer than 2 km of logged coverage ahead is too thin to forecast from.
@@ -468,7 +473,7 @@ function forecast() {
 
   if (cur === 'off') {
     const back = known.find(p => RANK[p.c] >= RANK.poor);
-    if (!back) return say('No coverage logged ahead for the next ', `${Math.round(path.at(-1).d / 1000)} km`, '.');
+    if (!back) return say('No coverage logged for the next ', span(path.at(-1).d), '.');
     say('Connection should be back in ', mins(back.d), '.');
     notify('eta-back', 'Connection expected back', `In ${mins(back.d)}, based on earlier trips.`, 600000);
     return;
@@ -487,7 +492,7 @@ function forecast() {
     const faster = known.find(p => RANK[p.c] >= RANK.fair);
     if (faster) return say('Faster connection in ', mins(faster.d), '.');
   }
-  say('Coverage looks steady for the next ', `${Math.round(known.at(-1).d / 1000)} km`, '.');
+  say('Coverage looks steady for the next ', span(known.at(-1).d), '.');
 }
 
 function watchSpeedUp(p) {
