@@ -73,8 +73,10 @@
   #ribbon text.end { fill: var(--fg); font-weight: 600; }
   #ribbon text.next { fill: var(--fg); }
 
-  .legend { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); margin: 6px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, max-content); gap: 4px 20px; color: var(--muted); font-size: 12px; }
+  .legend { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 20px; color: var(--muted); font-size: 12px; }
   .legend li { display: flex; align-items: center; gap: 8px; }
+  .legend .op { display: none; }
+  body[data-masts="on"] .legend .op { display: flex; }
   .legend i { width: 18px; height: 6px; border-radius: 3px; }
 
   #setup, .overlay { position: absolute; inset: 0; z-index: 900; background: rgba(13, 27, 38, .9); display: grid; place-items: center; padding: 24px; }
@@ -142,7 +144,10 @@
   .you i, .you b { position: absolute; inset: 0; border-radius: 50%; }
   .you b { background: var(--fg); border: 3px solid var(--ink); box-shadow: 0 0 0 2px var(--ring); }
   .you i { background: var(--ring); animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
-  .mast { --c: #6cb6ff; }
+  .mast { --c: #9fb0bf; }
+  .mast.op5, .mast.op21 { --c: #4f8cff; }
+  .mast.op91, .mast.op36 { --c: #b073ff; }
+  .mast.op12, .mast.op3 { --c: #ff6fb1; }
   .mast i, .mast b { position: absolute; inset: 0; border-radius: 50%; }
   .mast b { background: var(--c); transform: scale(.4); box-shadow: 0 0 3px var(--c); }
   .mast i { background: var(--c); opacity: 0; animation: beacon 3s ease-out infinite; animation-delay: var(--d); }
@@ -198,6 +203,9 @@
     <li><i style="background:var(--fair)"></i>150 to 400 ms</li>
     <li><i style="background:var(--poor)"></i>over 400 ms</li>
     <li><i style="background:var(--off)"></i>offline</li>
+    <li class="op"><i style="background:#4f8cff;border-radius:50%;width:8px;height:8px"></i>Elisa</li>
+    <li class="op"><i style="background:#b073ff;border-radius:50%;width:8px;height:8px"></i>Telia</li>
+    <li class="op"><i style="background:#ff6fb1;border-radius:50%;width:8px;height:8px"></i>DNA</li>
   </ul>
 </section>
 
@@ -295,7 +303,7 @@ const median = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floo
 const map = L.map('map', { zoomControl: false }).setView([63.2, 27.2], 8);
 const tiles = L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`, {
   maxZoom: 19,
-  attribution: 'Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>, trains © <a href="https://www.digitraffic.fi">Fintraffic</a> CC BY 4.0, coverage © <a href="https://www.ookla.com/ookla-for-good/open-data">Ookla</a> CC BY-NC-SA 4.0'
+  attribution: 'Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>, trains © <a href="https://www.digitraffic.fi">Fintraffic</a> CC BY 4.0, coverage © <a href="https://www.ookla.com/ookla-for-good/open-data">Ookla</a> CC BY-NC-SA 4.0, cells © <a href="https://opencellid.org">OpenCelliD</a> CC BY-SA 4.0'
 });
 if (CARTO_KEY) tiles.addTo(map);
 const baseLayer = L.layerGroup().addTo(map);
@@ -494,14 +502,16 @@ function trackIndexNear(pos) {
 }
 
 // ---------- masts ----------
-// Communication masts from OpenStreetMap, shown as beacons; only the ones in view, and only when zoomed in enough to tell them apart.
+// Cell sites from OpenCelliD with the operator and the measured range of each; only the ones in view, from zoom 8 in.
+const OPERATORS = { 5: 'Elisa', 21: 'Elisa', 91: 'Telia', 36: 'Telia', 12: 'DNA', 3: 'DNA', 14: 'Ålcom' };
+const RADIOS = [[8, '5G'], [4, '4G'], [2, '3G'], [1, '2G']];
 const mastLayer = L.layerGroup(), coverageLayer = L.layerGroup();
 let masts = null, mastsOn = store.get('netmap-masts') ?? true;
 function loadMasts() {
   if (masts) return drawMasts();
   const el = document.createElement('script');
-  el.src = 'data/fi-masts.js';
-  el.onload = () => { masts = window.NETMAP_MASTS || []; drawMasts(); };
+  el.src = 'data/fi-cells.js';
+  el.onload = () => { masts = window.NETMAP_CELLS || []; drawMasts(); };
   document.head.appendChild(el);
 }
 // Measured coverage: every Speedtest tile in view, so what surrounds a mast is what people actually got there.
@@ -514,7 +524,7 @@ function drawCoverageInView() {
     const o = ookla.get(quadkey(x, y));
     if (!o) continue;
     n++;
-    L.rectangle(tileBounds(x, y), { stroke: false, fillColor: COLORS[tileQuality(o)], fillOpacity: .22, interactive: false }).addTo(coverageLayer);
+    L.rectangle(tileBounds(x, y), { stroke: false, fillColor: COLORS[tileQuality(o)], fillOpacity: .14, interactive: false }).addTo(coverageLayer);
   }
 }
 function drawMasts() {
@@ -522,20 +532,26 @@ function drawMasts() {
   drawCoverageInView();
   if (!mastsOn || !masts || map.getZoom() < 8) return;
   const b = map.getBounds().pad(.2);
-  let n = 0;
-  for (const [lat, lon, mobile] of masts) {
-    if (!b.contains([lat, lon])) continue;
-    if (++n > 400) break;
+  const colour = { 5: '#4f8cff', 21: '#4f8cff', 91: '#b073ff', 36: '#b073ff', 12: '#ff6fb1', 3: '#ff6fb1' };
+  const inView = masts.filter(([lat, lon]) => b.contains([lat, lon]));
+  // Too many for one screen: an even sample across the view, never the first few hundred of the file.
+  const step = Math.max(1, Math.ceil(inView.length / 500));
+  // The measured range is where a site has been seen from; with more than a few dozen sites in view the circles blur into a blob, so they wait for a closer zoom.
+  const close = map.getZoom() >= 11 && inView.length <= 80;
+  for (const [lat, lon, net, range, samples, radios] of inView.filter((_, i) => i % step === 0)) {
+    if (close) L.circle([lat, lon], { radius: range, stroke: false, fillColor: colour[net] || '#9fb0bf', fillOpacity: .05, interactive: false }).addTo(mastLayer);
+    const tech = RADIOS.filter(([bit]) => radios & bit).map(([, name]) => name).join(', ');
     L.marker([lat, lon], {
-      icon: L.divIcon({ className: `mast${mobile ? ' mobile' : ''}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
-      interactive: false, keyboard: false
-    }).addTo(mastLayer);
+      icon: L.divIcon({ className: `mast op${net}`, html: `<i style="--d:-${(lat * 7919 + lon * 104729) % 3}s"></i><b></b>`, iconSize: [16, 16] }),
+      keyboard: false
+    }).bindTooltip(`${OPERATORS[net] || 'MNC ' + net}, ${tech}<br>seen up to ${range >= 1000 ? (range / 1000).toFixed(1) + ' km' : range + ' m'} away, ${samples} measurements`).addTo(mastLayer);
   }
 }
 function setMasts(on) {
   mastsOn = on;
   store.set('netmap-masts', on);
   $('masts-btn').setAttribute('aria-pressed', on);
+  document.body.dataset.masts = on ? 'on' : 'off';
   if (on) { coverageLayer.addTo(map); mastLayer.addTo(map); loadMasts(); } else { mastLayer.remove(); coverageLayer.remove(); }
 }
 map.on('moveend zoomend', drawMasts);

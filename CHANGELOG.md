@@ -1,3 +1,7 @@
+### 1.7.0: 2026-10-15
+
+* Show OpenCelliD cell sites with operator colours, measured range and technologies
+
 ### 1.6.2: 2026-10-15
 
 * Draw measured Speedtest coverage around the masts instead of guessed discs, and calm the beacons
