@@ -58,13 +58,21 @@
   #forecast b { color: var(--fg); font-weight: 600; }
   .readings b { font-size: 20px; font-weight: 600; color: var(--fg); margin-right: 6px; }
 
-  .controls { position: absolute; top: 28px; right: 32px; z-index: 600; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; max-width: 60%; }
+  .controls { position: absolute; top: 28px; right: 32px; z-index: 600; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 16px; max-width: 64%; }
+  .controls .group { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* Switches sit together in a tray and show their state; the plain buttons beside them only open something. */
+  .toggles { background: rgba(238, 243, 246, .06); border-radius: 999px; padding: 3px; }
+  .toggle { position: relative; padding-left: 44px; color: var(--muted); }
+  .toggle::before { content: ''; position: absolute; left: 12px; top: 50%; width: 24px; height: 14px; border-radius: 999px; background: var(--line); transform: translateY(-50%); transition: background .2s; }
+  .toggle::after { content: ''; position: absolute; left: 14px; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transform: translateY(-50%); transition: left .2s, background .2s; }
+  .toggle[aria-pressed="true"] { color: var(--fg); }
+  .toggle[aria-pressed="true"]::before { background: var(--good); }
+  .toggle[aria-pressed="true"]::after { left: 26px; background: var(--ink); }
   button {
     font: inherit; color: var(--fg); background: none; border: 0; border-radius: 999px;
     padding: 6px 14px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s;
   }
   button:hover { background: rgba(238, 243, 246, .08); }
-  button[aria-pressed="true"] { color: var(--good); }
 
   #trip { position: absolute; left: 32px; right: 32px; bottom: 24px; z-index: 600; }
   .trip-head { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; align-items: baseline; }
@@ -195,13 +203,17 @@
 </header>
 
 <nav class="controls">
-  <button id="follow" aria-pressed="true">Follow train</button>
-  <button id="whole">Whole route</button>
-  <button id="masts-btn" aria-pressed="false">Masts</button>
-  <button id="trip-btn">Change trip</button>
-  <button id="notify" aria-pressed="false">Alerts</button>
-  <button id="export">Export data</button>
-  <button id="import">Import data</button>
+  <div class="group toggles" aria-label="Map switches">
+    <button id="follow" class="toggle" aria-pressed="true">Follow train</button>
+    <button id="masts-btn" class="toggle" aria-pressed="false">Masts</button>
+  </div>
+  <div class="group actions">
+    <button id="whole">Whole route</button>
+    <button id="trip-btn">Change trip</button>
+    <button id="notify">Alerts</button>
+    <button id="export">Export data</button>
+    <button id="import">Import data</button>
+  </div>
   <input type="file" id="import-file" accept=".json,application/json" hidden>
 </nav>
 
@@ -1468,7 +1480,6 @@ const canNotify = () => Notification.permission === 'granted' || permAnswer === 
 const syncNotify = () => {
   const perm = Notification.permission, on = canNotify(), isFile = location.protocol === 'file:';
   $('notify').textContent = on ? 'Alerts on' : 'Alerts';
-  $('notify').setAttribute('aria-pressed', on);
   const how = isFile ? ' A page opened from a file usually cannot get them in Chrome; serve the folder with <code>python3 -m http.server 8080</code> and open <code>http://localhost:8080/</code> instead.' : '';
   $('alerts-perm').innerHTML = on
     ? 'System notifications are on. The cards, tone and title work regardless.'

@@ -1,17 +1,12 @@
-### 1.9.2: 2026-10-16
+### 2.0.0: 2026-10-16
 
+* Track journeys with train changes, switching trains at each change
+* Draw connecting trains on the map, name railbuses Kiskobussi
+* Give each connecting train the same From, To and Train fields
 * Use only GPS trails that cover a train's whole stretch, ask again for missing stops
 * Fetch map tiles for the whole journey and around the view for offline use
 * Show the time at every stop on the map
-
-### 1.9.1: 2026-10-16
-
-* Draw connecting trains on the map, name railbuses Kiskobussi
-* Give each connecting train the same From, To and Train fields
-
-### 1.9.0: 2026-10-16
-
-* Track journeys with train changes, switching trains at each change
+* Separate the map switches from the buttons that open something
 
 ### 1.8.2: 2026-10-15
 

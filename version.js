@@ -1,1 +1,1 @@
-window.NETMAP_VERSION = { version: '1.9.2' };
+window.NETMAP_VERSION = { version: '2.0.0' };
