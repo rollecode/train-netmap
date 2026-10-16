@@ -1263,14 +1263,14 @@ function render() {
     $('for').replaceChildren('for ', Object.assign(document.createElement('span'), { className: 'long', textContent: durLong(span) }), Object.assign(document.createElement('span'), { className: 'short', textContent: dur(span) }), reason);
   }
   $('outages').textContent = outages;
-  const dest = stops.at(-1), left = dest ? dest.t - Date.now() : 0;
+  // One countdown, to where the whole journey ends; the changes on the way have their own alerts and map labels.
+  const lastLeg = trip?.legTimes?.at(-1), finalT = trip?.legs?.length > 1 && lastLeg?.arr ? lastLeg.arr : stops.at(-1)?.t;
+  const dest = stops.at(-1), left = dest && finalT ? finalT - Date.now() : 0;
   if (dest && left > 0) {
     const s = Math.floor(left / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
     const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
     const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(', ');
-    const next = !isFinalLeg() && trip.legTimes?.[trip.leg + 1], end = trip.legTimes?.at(-1);
-    $('arrive').replaceChildren(`${next ? 'Changing in' : 'Arriving in'} ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }),
-      next ? `. Then ${next.label}${next.dep ? ' at ' + hhmm(next.dep) : ''}${next.track ? ' from track ' + next.track : ''}${end?.arr ? `, ${stationName(trip.legs.at(-1).to)} at ${hhmm(end.arr)}` : ''}.` : '.');
+    $('arrive').replaceChildren(`Arriving in ${stationName(trip.legs.at(-1).to)} in `, Object.assign(document.createElement('b'), { textContent: cd }), '.');
   } else {
     $('arrive').textContent = dest && points.length ? `${isFinalLeg() ? 'Arrived in' : 'Changing in'} ${dest.name}.` : '';
     if (!isFinalLeg() && dest && Date.now() > dest.t + 60000 && stops.length) switchLeg(trip.leg + 1, true);
@@ -1329,7 +1329,7 @@ function drawRibbon() {
     const best = stretches.reduce((a, b) => b.share > a.share ? b : a), worst = stretches.reduce((a, b) => b.share < a.share ? b : a);
     $('trip-best').replaceChildren('Best connection between ', tint('soft-good', best.name), '.');
     $('trip-worst').replaceChildren('Worst connection between ', tint('soft-bad', worst.name), '. ',
-      tint('soft-warn', `${Math.round(weak / total * 100)}% weak`), ', ', tint('soft-off', `${Math.round(off / total * 100)}% offline`), '.');
+      tint('soft-warn', `${Math.round(weak / total * 100)}% weak`), ', ', tint('soft-bad', `${Math.round(off / total * 100)}% offline`), '.');
   } else { $('trip-best').textContent = ''; $('trip-worst').textContent = ''; }
   const next = stops.find(s => s.t > now), dest = stops.at(-1);
   if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))}min, at ${hhmm(next.t)}.`, 3600000);

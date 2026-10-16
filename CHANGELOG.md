@@ -1,3 +1,7 @@
+### 2.0.2: 2026-10-16
+
+* Count down to the journey's final stop only, show the offline share in red
+
 ### 2.0.1: 2026-10-16
 
 * Move Follow train, Whole route and Masts to pill switches at the bottom right
