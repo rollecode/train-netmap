@@ -1371,13 +1371,14 @@ function drawRibbon() {
   $('trip-name').innerHTML = '';
   $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}${trip.legs.length > 1 ? `, train ${trip.leg + 1} of ${trip.legs.length}` : ''}` }));
   const late = last.late > 0 ? `${last.late}min late` : last.late < 0 ? `${-last.late}min early` : 'on time';
-  // Minutes only here; the seconds already run in the headline countdown.
-  const leftMin = Math.ceil((last.t - Date.now()) / 60000), hrs = Math.floor(leftMin / 60), mins = leftMin % 60;
+  // A to-the-second countdown to the next stop; the headline counts down to the end of the journey.
+  const stop = next || last, left = Math.max(0, Math.floor((stop.t - Date.now()) / 1000));
   const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const inText = leftMin <= 0 ? 'now' : leftMin === 1 ? 'in under a minute' : `in ${[hrs ? unit(hrs, 'hour') : '', mins ? unit(mins, 'minute') : ''].filter(Boolean).join(', ')}`;
+  const h = Math.floor(left / 3600), m = Math.floor(left / 60) % 60, sec = left % 60;
+  const inText = left === 0 ? 'now' : `in ${[h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(', ')}`;
   const lateLine = Object.assign(document.createElement('span'), { className: 'late', textContent: late[0].toUpperCase() + late.slice(1) });
   const mainLine = document.createElement('span');
-  mainLine.append(next && next !== last ? `Next ${next.name} ${hhmm(next.t)}, ` : '', Object.assign(document.createElement('b'), { textContent: `${last.name} ${inText}` }));
+  mainLine.append(`${stop === last ? '' : 'Next stop '}`, Object.assign(document.createElement('b'), { textContent: `${stop.name} ${inText}` }));
   $('trip-eta').replaceChildren(lateLine, mainLine);
 }
 

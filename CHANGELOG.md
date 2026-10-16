@@ -1,3 +1,7 @@
+### 2.0.5: 2026-10-16
+
+* Count down to the next stop to the second, bottom right
+
 ### 2.0.4: 2026-10-16
 
 * Show the time left to the next change bottom right, with the delay on its own line
