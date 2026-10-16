@@ -10,7 +10,7 @@ An **offline-first single html-file page** that follows your train across Finlan
 
 1. Download or clone this repository.
 2. Double-click `start.command` on a Mac, or run `./start.sh` on Linux. It serves the folder on `http://localhost:8080/` and opens it in your browser. Opening `index.html` straight from the file works too, with one difference: browsers forget notification permission for a file-opened page, so alerts then show only inside the page.
-3. Pick your departure and arrival stations. The train fills itself in, or type one, as `IC 63`, `IC63` or `63`. After a change of trains, the station where you boarded this one works best; with no direct train the page lists the trains running towards your destination right now.
+3. Pick your departure and arrival stations. The train fills itself in, or type one, as `IC 63`, `IC63` or `63`. With changes on the way, press "Add a change of trains" for each one and give the next station and train; the page follows the first train, switches to the next when it arrives, and tells you the onward train and its track before each change.
 
 That is all it needs. The page tells you on screen if something is missing. The map background wants a free key from [CARTO](https://carto.com/basemaps): copy `config.example.js` to `config.js`, paste the key in and reload.
 
@@ -19,6 +19,8 @@ A trip can also be preset in the address: `index.html?train=63&from=PM&to=OL`, w
 ## Features
 
 🚆 **Follows your train live**, with speed, the real track and every stop, and keeps the map pinned to it.<br>
+
+🔁 **Handles journeys with changes**: enter every train at once, and the page switches at each change and names the onward train and its track.<br>
 
 📶 **Measures latency every 5 seconds and bandwidth every 2 minutes**, from a web worker that keeps going in a hidden tab.<br>
 

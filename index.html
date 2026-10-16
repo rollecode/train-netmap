@@ -111,6 +111,10 @@
   .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 24px; }
   .fields label { display: grid; gap: 6px; color: var(--muted); }
   .fields .wide { grid-column: 1 / -1; }
+  .leg-row { margin-top: 24px; }
+  .leg-change { grid-column: 1 / -1; margin: 0; color: var(--fg); font-weight: 600; display: flex; justify-content: space-between; align-items: baseline; }
+  .leg-change button { font-weight: 400; color: var(--muted); }
+  #add-leg { margin-top: 20px; padding-left: 0; color: var(--good); }
   input {
     font: inherit; font-size: 20px; color: var(--fg); background: transparent; width: 100%;
     border: 0; border-bottom: 2px solid var(--line); padding: 6px 0; border-radius: 0; transition: border-color .15s;
@@ -226,6 +230,8 @@
       <label>To<input id="to" list="stations" placeholder="Like Oulu" autocomplete="off" required></label>
       <label class="wide">Train<input id="train-no" list="trains" placeholder="Filled in from the stations, or type one like IC 63" autocomplete="off"></label>
     </div>
+    <div id="legs"></div>
+    <p><button type="button" id="add-leg">Add a change of trains</button></p>
     <div class="submit">
       <button class="primary" type="submit">Track trip</button>
       <button type="button" id="setup-import">Import data</button>
@@ -465,6 +471,10 @@ const lastTrip = store.get('netmap-trip');
 // A trip from yesterday is still live after midnight on a night train.
 let trip = [today, localDate(Date.now() - 86400000)].includes(lastTrip?.date) && trainNo(lastTrip.train) ? { ...lastTrip, train: trainNo(lastTrip.train) } : null;
 if (trainNo(params.get('train'))) trip = { train: trainNo(params.get('train')), from: params.get('from'), to: params.get('to'), date: today };
+// A trip is a list of legs, one per train; trip.train, from and to always mirror the leg being ridden now.
+if (trip && !trip.legs) trip.legs = [{ train: trip.train, from: trip.from, to: trip.to, date: trip.date }];
+if (trip) trip.leg ??= 0;
+const isFinalLeg = () => !trip || trip.leg >= trip.legs.length - 1;
 let stops = [], timetableAt = 0, trainLabel = '', track = [], trackEnd = Infinity, lastLate = null;
 const pointsKey = () => `netmap-${trip.date}-${trip.train}`;
 const stopsKey = () => `netmap-stops-${trip.date}-${trip.train}`;
@@ -654,7 +664,7 @@ const GROUP = { drop: 'deadzone', 'drop-soon': 'deadzone', offline: 'offline', '
 const alertsOn = Object.assign({ deadzone: true, offline: true, back: true, slow: true, faster: true, bandwidth: true, stop: true, arrive: true, delay: true, sound: true }, store.get('netmap-alerts') || {});
 let titleFlash = '';
 function notify(kind, title, body, gap = 180000) {
-  const group = GROUP[kind] || (kind.startsWith('stop-') ? 'stop' : kind);
+  const group = GROUP[kind] || (kind.startsWith('stop-') || kind.startsWith('leg-') ? 'stop' : kind.startsWith('change-') ? 'arrive' : kind);
   if (kind !== 'test' && !alertsOn[group]) return;
   if (Date.now() - (notified[kind] || 0) < gap) return;
   notified[kind] = Date.now();
@@ -903,6 +913,36 @@ function drawRoute() {
 // ---------- samples ----------
 let offlineReason = '', points = [], online = null, since = Date.now(), outages = 0, lastSample = null, lastPos = null, lastKmh = null, fix = null;
 
+// Times, train names and departure tracks for every leg, kept in the trip so a reload offline still knows them.
+async function loadLegTimes() {
+  if (!trip || trip.legs.length < 2) return;
+  const out = [];
+  for (const leg of trip.legs) {
+    const [t] = await get(`/trains/${leg.date}/${leg.train}`, 15000).catch(() => []);
+    if (!t) { out.push(trip.legTimes?.[out.length] || null); continue; }
+    const rows = t.timeTableRows;
+    const dep = rows.find(r => r.stationShortCode === leg.from && r.type === 'DEPARTURE');
+    const arr = rows.find(r => r.stationShortCode === leg.to && r.type === 'ARRIVAL');
+    out.push({ label: t.commuterLineID ? `${t.commuterLineID} train` : `${t.trainType} ${t.trainNumber}`, dep: dep && when(dep), arr: arr && when(arr), track: dep?.commercialTrack || '' });
+  }
+  trip.legTimes = out;
+  store.set('netmap-trip', trip);
+  // Opened again mid-journey: jump to the leg that has not arrived yet.
+  let i = out.findIndex(l => l?.arr && l.arr + 60000 > Date.now());
+  if (i < 0) i = out.length - 1;
+  if (i !== trip.leg) switchLeg(i, false);
+}
+function switchLeg(i, announce) {
+  trip.leg = i;
+  Object.assign(trip, trip.legs[i]);
+  delete trip.arrived;
+  store.set('netmap-trip', trip);
+  stops = []; track = []; trackEnd = Infinity; trainLabel = ''; timetableAt = 0; lastLate = null;
+  routeLayer.clearLayers();
+  startTrip();
+  const lt = trip.legTimes?.[i];
+  if (announce) notify(`leg-${i}`, `Now on ${lt?.label || 'train ' + trip.train}`, `${stationName(trip.from)} to ${stationName(trip.to)}${lt?.track ? ', from track ' + lt.track : ''}.`, 600000);
+}
 function startTrip() {
   worker?.postMessage({ train: trip.train });
   setFollow(true);
@@ -1093,10 +1133,13 @@ function render() {
     const s = Math.floor(left / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60;
     const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
     const cd = [h ? unit(h, 'hour') : '', h || m ? unit(m, 'minute') : '', unit(sec, 'second')].filter(Boolean).join(', ');
-    $('arrive').replaceChildren(`Arriving in ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }), '.');
+    const next = !isFinalLeg() && trip.legTimes?.[trip.leg + 1], end = trip.legTimes?.at(-1);
+    $('arrive').replaceChildren(`${next ? 'Changing in' : 'Arriving in'} ${dest.name} in `, Object.assign(document.createElement('b'), { textContent: cd }),
+      next ? `. Then ${next.label}${next.dep ? ' at ' + hhmm(next.dep) : ''}${next.track ? ' from track ' + next.track : ''}${end?.arr ? `, ${stationName(trip.legs.at(-1).to)} at ${hhmm(end.arr)}` : ''}.` : '.');
   } else {
-    $('arrive').textContent = dest && points.length ? `Arrived in ${dest.name}.` : '';
-    if (dest && points.length > 20 && !trip.arrived) {
+    $('arrive').textContent = dest && points.length ? `${isFinalLeg() ? 'Arrived in' : 'Changing in'} ${dest.name}.` : '';
+    if (!isFinalLeg() && dest && Date.now() > dest.t + 60000 && stops.length) switchLeg(trip.leg + 1, true);
+    if (isFinalLeg() && dest && points.length > 20 && !trip.arrived) {
       trip.arrived = true;
       store.set('netmap-trip', trip);
       $('arrived-title').textContent = `Arrived in ${dest.name}`;
@@ -1154,8 +1197,10 @@ function drawRibbon() {
   } else { $('trip-best').textContent = ''; $('trip-worst').textContent = ''; }
   const next = stops.find(s => s.t > now), dest = stops.at(-1);
   if (next && next !== dest && next.t - now <= 120000) notify(`stop-${next.code}`, `Next stop ${next.name}`, `In about ${Math.max(1, Math.round((next.t - now) / 60000))}min, at ${hhmm(next.t)}.`, 3600000);
-  if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify('arrive-10', `${dest.name} in about ${Math.round((dest.t - now) / 60000)}min`, `Arriving at ${hhmm(dest.t)}.`, 3600000);
-  if (dest && dest.t - now <= 120000 && dest.t > now) notify('arrive-2', `Arriving in ${dest.name}`, `At ${hhmm(dest.t)}, in about 2min.`, 3600000);
+  const nextLeg = !isFinalLeg() && trip.legTimes?.[trip.leg + 1];
+  const onward = nextLeg ? `${nextLeg.label}${nextLeg.dep ? ' leaves at ' + hhmm(nextLeg.dep) : ''}${nextLeg.track ? ' from track ' + nextLeg.track : ''}.` : '';
+  if (dest && dest.t - now <= 600000 && dest.t - now > 120000) notify(nextLeg ? `change-10-${trip.leg}` : 'arrive-10', `${nextLeg ? 'Change in' : ''}${nextLeg ? ' ' : ''}${dest.name} in about ${Math.round((dest.t - now) / 60000)}min`, nextLeg ? onward : `Arriving at ${hhmm(dest.t)}.`, 3600000);
+  if (dest && dest.t - now <= 120000 && dest.t > now) notify(nextLeg ? `change-2-${trip.leg}` : 'arrive-2', nextLeg ? `Change in ${dest.name}` : `Arriving in ${dest.name}`, nextLeg ? onward : `At ${hhmm(dest.t)}, in about 2min.`, 3600000);
   const placed = { above: -Infinity, below: -Infinity };
   stops.forEach((s, i) => {
     const sx = x(s.t), end = i === 0 || i === stops.length - 1;
@@ -1186,7 +1231,7 @@ function drawRibbon() {
 
   const last = stops.at(-1);
   $('trip-name').innerHTML = '';
-  $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}` }));
+  $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}${trip.legs.length > 1 ? `, train ${trip.leg + 1} of ${trip.legs.length}` : ''}` }));
   const late = last.late > 0 ? `${last.late}min late` : last.late < 0 ? `${-last.late}min early` : 'on time';
   $('trip-eta').innerHTML = '';
   $('trip-eta').append(
@@ -1202,11 +1247,50 @@ function openSetup() {
   $('setup-cancel').hidden = !trip;
   $('setup-msg').textContent = '';
   loadStations().then(() => {
-    const prev = trip || lastTrip;
-    if (prev?.from && !$('from').value) { $('from').value = stationName(prev.from); $('to').value = stationName(prev.to); suggestTrains(); }
+    const prev = trip || lastTrip, legs = prev?.legs || (prev?.from ? [prev] : []);
+    if (legs.length && !$('from').value) {
+      $('from').value = stationName(legs[0].from); $('to').value = stationName(legs[0].to);
+      if (legs.length > 1) { $('train-no').value = legs[0].train; autoTrain = false; }
+      legRows().forEach(r => r.remove());
+      legs.slice(1).forEach(l => addLegRow(l));
+      suggestTrains();
+    }
   }).catch(() => { $('setup-msg').textContent = 'Station list did not load. Check the connection and try again.'; });
   $('from').focus();
 }
+// Extra legs: each row is the next train, from where the previous one ends.
+function legRows() { return [...$('legs').querySelectorAll('.leg-row')]; }
+function legFrom(row) { const rows = legRows(), i = rows.indexOf(row); return i === 0 ? $('to').value : rows[i - 1].querySelector('.leg-to').value; }
+function syncLegLabels() { for (const row of legRows()) row.querySelector('.leg-change span').textContent = `Change in ${legFrom(row) || '...'}`; }
+function addLegRow(leg = {}) {
+  const n = legRows().length + 2, row = Object.assign(document.createElement('div'), { className: 'fields leg-row' });
+  row.innerHTML = `<p class="leg-change"><span></span><button type="button">Remove</button></p>
+    <label>Then to<input class="leg-to" list="stations" placeholder="Like Jyväskylä" autocomplete="off" required></label>
+    <label>Train<input class="leg-train" list="trains-${n}" placeholder="Filled in, or type one like IC 63" autocomplete="off"></label>
+    <datalist id="trains-${n}"></datalist>`;
+  const to = row.querySelector('.leg-to'), train = row.querySelector('.leg-train');
+  to.value = leg.to ? stationName(leg.to) : '';
+  train.value = leg.train || '';
+  let auto = !leg.train, asked = '';
+  train.oninput = () => { auto = !train.value; };
+  to.addEventListener('input', async () => {
+    syncLegLabels();
+    const f = stationCode(legFrom(row)), t = stationCode(to.value);
+    if (!f || !t || f + t === asked) return;
+    asked = f + t;
+    try {
+      const opts = await findTrains(f, t);
+      row.querySelector('datalist').replaceChildren(...opts.map(o => Object.assign(document.createElement('option'), { value: o.label, label: `${stationName(f)} ${hhmm(o.dep)}, ${stationName(t)} ${hhmm(o.arr)}` })));
+      if (auto && opts[0]) train.value = opts[0].label;
+    } catch { asked = ''; }
+  });
+  row.querySelector('.leg-change button').onclick = () => { row.remove(); syncLegLabels(); };
+  $('legs').append(row);
+  syncLegLabels();
+  return row;
+}
+$('add-leg').onclick = () => addLegRow().querySelector('.leg-to').focus();
+$('to').addEventListener('input', syncLegLabels);
 // Typed or picked train text is only replaced while it still holds our own suggestion.
 let autoTrain = true, suggestedFor = '';
 $('train-no').oninput = () => { autoTrain = !$('train-no').value; };
@@ -1244,19 +1328,30 @@ $('setup').querySelector('form').onsubmit = async e => {
   const btn = e.submitter, msg = $('setup-msg');
   const from = stationCode($('from').value), to = stationCode($('to').value);
   if (!from || !to) { msg.textContent = 'Pick both stations from the list.'; return; }
-  btn.disabled = true; btn.textContent = 'Finding your train';
+  const plan = [{ from, to, text: $('train-no').value }];
+  for (const row of legRows()) {
+    const t = stationCode(row.querySelector('.leg-to').value);
+    if (!t) { msg.textContent = 'Pick the station for every change from the list.'; return; }
+    plan.push({ from: plan.at(-1).to, to: t, text: row.querySelector('.leg-train').value });
+  }
+  btn.disabled = true; btn.textContent = plan.length > 1 ? 'Finding your trains' : 'Finding your train';
   try {
-    let train = trainNo($('train-no').value);
-    if (!train) {
-      const [best] = await findTrains(from, to);
-      if (!best) throw new Error(`No direct train to ${stationName(to)} is running right now. Type the train, like IC 63.`);
-      train = String(best.t.trainNumber);
+    const legs = [];
+    for (const p of plan) {
+      let train = trainNo(p.text), date = today;
+      if (!train) {
+        const [best] = await findTrains(p.from, p.to);
+        if (!best) throw new Error(`No direct train from ${stationName(p.from)} to ${stationName(p.to)} is running right now. Type the train, like IC 63.`);
+        train = String(best.t.trainNumber); date = best.t.departureDate;
+      }
+      legs.push({ train, from: p.from, to: p.to, date });
     }
-    trip = { train, from, to, date: today };
+    trip = { ...legs[0], legs, leg: 0 };
     store.set('netmap-trip', trip);
     history.replaceState(null, '', location.pathname);
     $('setup').hidden = true;
     startTrip();
+    loadLegTimes().catch(() => {});
   } catch (err) {
     msg.textContent = err.message.startsWith('No direct train') ? err.message : 'Could not reach Digitraffic. Check the connection and try again.';
   } finally {
@@ -1377,7 +1472,7 @@ syncNotify();
 render();
 setInterval(() => { render(); if (online !== null) drawRibbon(); }, 1000);
 loadStations().then(() => { if (trip) loadTimetable().then(drawRibbon); }).catch(() => {});
-if (trip) startTrip(); else openSetup();
+if (trip) { startTrip(); loadLegTimes().catch(() => {}); } else openSetup();
 // Samples run on a fixed clock: the next one starts POLL after this one started, however long the probe took.
 const loop = async () => { const t = Date.now(); await tick(); setTimeout(loop, Math.max(500, POLL - (Date.now() - t))); };
 loop();

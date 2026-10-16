@@ -1,3 +1,7 @@
+### 1.9.0: 2026-10-16
+
+* Track journeys with train changes, switching trains at each change
+
 ### 1.8.2: 2026-10-15
 
 * Spell out the online and offline time in full on wide screens
