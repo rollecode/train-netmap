@@ -60,7 +60,7 @@ Two things on the computer decide whether you see the banners. On macOS the brow
 
 ## Offline
 
-Leaflet is in the repository, and the station list, timetable, track and samples are kept in the browser, so a trip that was set up once comes back without a connection. Map tiles along the route ahead are fetched while online. Started with `start.command` or `start.sh`, a service worker keeps the page and every tile it has seen; opened straight from the file, tiles rely on the browser's own cache instead.
+Leaflet is in the repository, and the station list, timetable, track and samples are kept in the browser, so a trip that was set up once comes back without a connection. While online, the page fetches the map tiles along every train of the journey at zooms 8 to 13, and the view one zoom in and out whenever the map moves, six at a time so the downloads do not crowd the connection. Started with `start.command` or `start.sh`, a service worker keeps the page and every tile it has seen; opened straight from the file, tiles rely on the browser's own cache instead.
 
 ## Working on it
 

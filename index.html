@@ -546,27 +546,32 @@ async function loadTimetable() {
 // The same train number runs the same line every day, so its GPS trail from an earlier day is the real track geometry.
 // A train's GPS trail from an earlier day, cached per train number.
 const legTracks = {};
-async function fetchTrack(train) {
+// A day's trail counts only if it passes within 2 km of both ends of the stretch; a train that lost GPS halfway would draw a stub.
+const passesBoth = (pts, ends) => !ends || ends.every(([la, lo]) => pts.some(([a, b]) => L.latLng(a, b).distanceTo([la, lo]) < 2000));
+async function fetchTrack(train, ends) {
   const cached = store.get(`netmap-track-${train}`)?.pts;
-  if (cached?.length) return cached;
+  if (cached?.length && passesBoth(cached, ends)) return cached;
   for (let back = 1; back <= 7; back++) {
     const d = localDate(Date.now() - back * 86400000);
     const pts = await get(`/train-locations/${d}/${train}`, 30000).catch(() => []);
     if (pts.length < 50) continue;
     pts.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     const out = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
+    if (!passesBoth(out, ends)) continue;
     store.set(`netmap-track-${train}`, { date: d, pts: out });
     return out;
   }
   return [];
 }
+const endsOf = codes => { const at = codes.map(c => stations.find(x => x.code === c)).filter(Boolean); return at.length === codes.length ? at.map(s => [s.lat, s.lon]) : null; };
 async function loadTrack() {
   if (track.length) return;
-  const train = trip.train, pts = await fetchTrack(train);
+  const train = trip.train, pts = await fetchTrack(train, endsOf([trip.from, trip.to].filter(Boolean)));
   if (train !== trip?.train || !pts.length) return;
   track = pts;
   drawRoute();
   drawBaseline();
+  prefetchJourney();
 }
 function nearIndex(line, pos) {
   let best = 0, bd = Infinity;
@@ -872,6 +877,51 @@ function watchSpeedUp(p) {
 }
 
 // Load the tiles along the route ahead while online, so the map keeps working in dead zones.
+// Tiles for offline use: the whole journey once per trip at zooms 8-13, and the view one zoom in and out on every move.
+const TILE = (z, x, y) => `https://basemaps.cartocdn.com/rastertiles/dark_all/${z}/${x}/${y}${L.Browser.retina ? '@2x' : ''}.png?key=${CARTO_KEY}`;
+const tileQueue = [], tileSeen = new Set();
+let tilesLoading = 0;
+function queueTile(z, x, y) {
+  const k = `${z}/${x}/${y}`;
+  if (tileSeen.has(k)) return;
+  tileSeen.add(k);
+  tileQueue.push([z, x, y]);
+}
+function pumpTiles() {
+  // Six at a time, so the downloads never crowd out the probe on a thin link.
+  while (tilesLoading < 6 && tileQueue.length && online) {
+    const [z, x, y] = tileQueue.shift(), img = new Image();
+    tilesLoading++;
+    img.onload = img.onerror = () => { tilesLoading--; setTimeout(pumpTiles, 50); };
+    img.src = TILE(z, x, y);
+  }
+}
+function tileOf(lat, lon, z) { const n = 2 ** z; return [Math.floor((lon + 180) / 360 * n), Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n)]; }
+function prefetchJourney() {
+  if (!CARTO_KEY || !trip) return;
+  const lines = [track, ...Object.values(legTracks)].filter(l => l?.length);
+  for (const leg of trip.legTimes || []) if (leg?.codes) lines.push(leg.codes.map(c => stations.find(x => x.code === c)).filter(Boolean).map(s => [s.lat, s.lon]));
+  for (const line of lines) for (let i = 0; i < line.length; i += 3) {
+    const [lat, lon] = line[i];
+    for (let z = 8; z <= 13; z++) {
+      const [x, y] = tileOf(lat, lon, z), r = z >= 12 ? 1 : 0;
+      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) queueTile(z, x + dx, y + dy);
+    }
+  }
+  pumpTiles();
+}
+function prefetchView() {
+  if (!CARTO_KEY) return;
+  const b = map.getBounds(), z0 = map.getZoom();
+  for (const z of [z0 - 1, z0 + 1]) {
+    if (z < 5 || z > 15) continue;
+    const [x0, y0] = tileOf(b.getNorth(), b.getWest(), z), [x1, y1] = tileOf(b.getSouth(), b.getEast(), z);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 120) continue;
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) queueTile(z, x, y);
+  }
+  pumpTiles();
+}
+map.on('moveend', prefetchView);
 function prefetchTiles() {
   if (!CARTO_KEY) return;
   const z = map.getZoom(), n = 2 ** z, want = [];
@@ -916,14 +966,14 @@ function drawRoute() {
     L.circleMarker([s.at.lat, s.at.lon], {
       radius: end ? 7 : isNext ? 6 : 5, color: '#eef3f6', weight: end || isNext ? 3 : 2,
       fillColor: '#0d1b26', fillOpacity: 1, opacity: passed ? .5 : 1
-    }).bindTooltip(isNext ? `${s.name} ${hhmm(s.t)}` : s.name, {
+    }).bindTooltip(`${s.name} ${hhmm(s.t)}`, {
       permanent: true, direction: 'right', offset: [8, 0],
       className: `stop-label${end ? ' end' : ''}${isNext ? ' next' : ''}${passed ? ' passed' : ''}`
     }).addTo(routeLayer);
   });
   // Connecting trains still ahead: their line dashed and dimmer, with every stop and the change stations named.
   for (let j = (trip?.leg ?? 0) + 1; j < (trip?.legs.length ?? 0); j++) {
-    const lt = trip.legTimes?.[j], at = (lt?.codes || [trip.legs[j].from, trip.legs[j].to]).map(c => stations.find(x => x.code === c)).filter(Boolean);
+    const lt = trip.legTimes?.[j], at = (lt?.codes || [trip.legs[j].from, trip.legs[j].to]).map((c, k) => { const st = stations.find(x => x.code === c); return st && { ...st, t: lt?.times?.[k] }; }).filter(Boolean);
     if (at.length < 2) continue;
     // A stored trail only stands in for the line when it really passes both end stations; otherwise the stops are joined.
     const trail = legTracks[j] || [], ia = trail.length ? nearIndex(trail, [at[0].lat, at[0].lon]) : 0, ib = trail.length ? nearIndex(trail, [at.at(-1).lat, at.at(-1).lon]) : 0;
@@ -933,7 +983,8 @@ function drawRoute() {
     at.forEach((s, i) => {
       const end = i === at.length - 1;
       L.circleMarker([s.lat, s.lon], { radius: end ? 7 : 4, color: '#eef3f6', weight: end ? 3 : 2, fillColor: '#0d1b26', fillOpacity: 1, opacity: .7 })
-        .bindTooltip(end ? `${s.name}${lt?.arr ? ' ' + hhmm(lt.arr) : ''}` : s.name, { permanent: true, direction: 'right', offset: [8, 0], className: `stop-label${end ? ' end' : ' passed'}` }).addTo(routeLayer);
+        // The change station already carries the arriving train's time on the right; the onward train goes on the left.
+        .bindTooltip(i === 0 ? `${lt?.label || 'Next train'} ${s.t ? hhmm(s.t) : ''}` : `${s.name}${s.t ? ' ' + hhmm(s.t) : ''}`, { permanent: true, direction: i === 0 ? 'left' : 'right', offset: [i === 0 ? -8 : 8, 0], className: `stop-label${end ? ' end' : ' passed'}` }).addTo(routeLayer);
     });
   }
   hideCoveredLabels();
@@ -943,8 +994,10 @@ function drawRoute() {
 let offlineReason = '', points = [], online = null, since = Date.now(), outages = 0, lastSample = null, lastPos = null, lastKmh = null, fix = null;
 
 // Times, train names and departure tracks for every leg, kept in the trip so a reload offline still knows them.
+let legsAt = 0;
 async function loadLegTimes() {
   if (!trip || trip.legs.length < 2) return;
+  legsAt = Date.now();
   const out = [];
   for (const leg of trip.legs) {
     const [t] = await get(`/trains/${leg.date}/${leg.train}`, 15000).catch(() => []);
@@ -954,12 +1007,14 @@ async function loadLegTimes() {
     const arr = rows.find(r => r.stationShortCode === leg.to && r.type === 'ARRIVAL');
     const codes = [...new Set(rows.filter(r => r.trainStopping && r.commercialStop).map(r => r.stationShortCode))];
     const a = codes.indexOf(leg.from), b = codes.indexOf(leg.to);
-    out.push({ label: trainName(t), dep: dep && when(dep), arr: arr && when(arr), track: dep?.commercialTrack || '', codes: a >= 0 && b > a ? codes.slice(a, b + 1) : [leg.from, leg.to] });
+    const seq = a >= 0 && b > a ? codes.slice(a, b + 1) : [leg.from, leg.to];
+    const times = seq.map((c, k) => { const row = rows.find(r => r.stationShortCode === c && r.type === (k === 0 ? 'DEPARTURE' : 'ARRIVAL')); return row ? when(row) : null; });
+    out.push({ label: trainName(t), dep: dep && when(dep), arr: arr && when(arr), track: dep?.commercialTrack || '', codes: seq, times });
   }
   trip.legTimes = out;
   store.set('netmap-trip', trip);
   drawRoute();
-  for (let j = trip.leg + 1; j < trip.legs.length; j++) fetchTrack(trip.legs[j].train).then(pts => { legTracks[j] = pts; drawRoute(); }).catch(() => {});
+  for (let j = trip.leg + 1; j < trip.legs.length; j++) fetchTrack(trip.legs[j].train, endsOf([trip.legs[j].from, trip.legs[j].to])).then(pts => { legTracks[j] = pts; drawRoute(); prefetchJourney(); }).catch(() => {});
   // Opened again mid-journey: jump to the leg that has not arrived yet.
   let i = out.findIndex(l => l?.arr && l.arr + 60000 > Date.now());
   if (i < 0) i = out.length - 1;
@@ -994,10 +1049,12 @@ function startTrip() {
   // Cached timetable and track keep the route on screen when the trip starts offline.
   stops = store.get(stopsKey()) || [];
   track = store.get(trackKey())?.pts || [];
+  if (track.length && !passesBoth(track, endsOf([trip.from, trip.to].filter(Boolean)))) track = [];
   drawBaseline();
   if (stops.length) { drawRoute(); drawRibbon(); }
   loadTimetable().then(drawRibbon).catch(() => {});
   loadTrack().catch(() => {});
+  prefetchJourney();
   render();
 }
 
@@ -1133,8 +1190,10 @@ function handleSample(p) {
   if (p.kmh > 10) speeds = [...speeds.slice(-11), p.kmh];
   watchSpeedUp(p);
   forecast();
-  if (p.ok) prefetchTiles();
+  if (p.ok) { prefetchTiles(); pumpTiles(); }
   if (p.ok && Date.now() - timetableAt > 60000) loadTimetable().then(drawRibbon).catch(() => {});
+  // A connecting train whose stops did not load, say during a rate limit, is asked for again every 2 minutes.
+  if (p.ok && trip.legs.length > 1 && (!trip.legTimes || trip.legTimes.some(l => !l?.times)) && Date.now() - legsAt > 120000) loadLegTimes().catch(() => {});
   drawRibbon();
   render();
 }

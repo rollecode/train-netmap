@@ -1,3 +1,9 @@
+### 1.9.2: 2026-10-16
+
+* Use only GPS trails that cover a train's whole stretch, ask again for missing stops
+* Fetch map tiles for the whole journey and around the view for offline use
+* Show the time at every stop on the map
+
 ### 1.9.1: 2026-10-16
 
 * Draw connecting trains on the map, name railbuses Kiskobussi
