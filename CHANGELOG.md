@@ -1,3 +1,8 @@
+### 1.9.1: 2026-10-16
+
+* Draw connecting trains on the map, name railbuses Kiskobussi
+* Give each connecting train the same From, To and Train fields
+
 ### 1.9.0: 2026-10-16
 
 * Track journeys with train changes, switching trains at each change

@@ -231,7 +231,7 @@
       <label class="wide">Train<input id="train-no" list="trains" placeholder="Filled in from the stations, or type one like IC 63" autocomplete="off"></label>
     </div>
     <div id="legs"></div>
-    <p><button type="button" id="add-leg">Add a change of trains</button></p>
+    <p><button type="button" id="add-leg">Add a connecting train</button></p>
     <div class="submit">
       <button class="primary" type="submit">Track trip</button>
       <button type="button" id="setup-import">Import data</button>
@@ -296,6 +296,9 @@ const DT_HEADERS = { 'Digitraffic-User': 'train-netmap' };
 const get = (path, ms = 8000) => fetch(API + path, { signal: AbortSignal.timeout(ms), cache: 'no-store', headers: DT_HEADERS })
   .then(r => r.ok ? r.json() : Promise.reject(new Error(r.status)));
 const when = r => Date.parse(r.actualTime || r.liveEstimateTime || r.scheduledTime);
+// The name on the ticket: VR sells its HDM railbuses as Kiskobussi.
+const TRAIN_TYPES = { HDM: 'Kiskobussi' };
+const trainName = t => t.commuterLineID ? `${t.commuterLineID} train` : `${TRAIN_TYPES[t.trainType] || t.trainType} ${t.trainNumber}`;
 const hhmm = t => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const hours = h => `${h} ${h === 1 ? 'hour' : 'hours'}`;
 // The same span in full words, for the places with room for it: "1 hour, 12 minutes, 40 seconds".
@@ -487,7 +490,7 @@ async function findTrains(from, to) {
     const rows = t.timeTableRows;
     const di = rows.findIndex(r => r.stationShortCode === from && r.type === 'DEPARTURE');
     const ai = rows.findIndex((r, i) => i > di && r.stationShortCode === to && r.type === 'ARRIVAL');
-    return di >= 0 && ai >= 0 && { t, dep: when(rows[di]), arr: when(rows[ai]), label: `${t.trainType} ${t.trainNumber}` };
+    return di >= 0 && ai >= 0 && { t, dep: when(rows[di]), arr: when(rows[ai]), label: trainName(t) };
   }).filter(Boolean);
   // Prefer the train that is between the two stations right now, then the nearest departure.
   options.sort((a, b) => score(a) - score(b));
@@ -500,7 +503,7 @@ async function findTrains(from, to) {
   return arrivals.filter(t => t.runningCurrently).map(t => {
     const rows = t.timeTableRows, ai = rows.findIndex(r => r.stationShortCode === to && r.type === 'ARRIVAL');
     const change = rows.some(r => reachable.has(r.stationShortCode));
-    return ai >= 0 && { t, dep: when(rows[0]), arr: when(rows[ai]), change, label: `${t.trainType} ${t.trainNumber}` };
+    return ai >= 0 && { t, dep: when(rows[0]), arr: when(rows[ai]), change, label: trainName(t) };
   }).filter(o => o && o.arr > now).sort((a, b) => (b.change - a.change) || (a.arr - b.arr));
 }
 
@@ -517,7 +520,7 @@ async function loadTimetable() {
     $('trip-eta').textContent = '';
     return;
   }
-  trainLabel = t.commuterLineID ? `${t.commuterLineID} train` : `${t.trainType} ${t.trainNumber}`;
+  trainLabel = trainName(t);
   const rows = t.timeTableRows.filter(r => r.trainStopping && r.commercialStop);
   const codes = [...new Set(rows.map(r => r.stationShortCode))];
   // Boarded from another train: start at the last stop this train left before the first sample, or before now.
@@ -541,28 +544,37 @@ async function loadTimetable() {
 
 // ---------- track ----------
 // The same train number runs the same line every day, so its GPS trail from an earlier day is the real track geometry.
-async function loadTrack() {
-  if (track.length) return;
-  const train = trip.train;
+// A train's GPS trail from an earlier day, cached per train number.
+const legTracks = {};
+async function fetchTrack(train) {
+  const cached = store.get(`netmap-track-${train}`)?.pts;
+  if (cached?.length) return cached;
   for (let back = 1; back <= 7; back++) {
     const d = localDate(Date.now() - back * 86400000);
     const pts = await get(`/train-locations/${d}/${train}`, 30000).catch(() => []);
-    if (train !== trip?.train) return;
     if (pts.length < 50) continue;
     pts.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    track = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
-    store.set(trackKey(), { date: d, pts: track });
-    drawRoute();
-    drawBaseline();
-    return;
+    const out = pts.filter((_, i) => i % 4 === 0).map(p => [+p.location.coordinates[1].toFixed(5), +p.location.coordinates[0].toFixed(5)]);
+    store.set(`netmap-track-${train}`, { date: d, pts: out });
+    return out;
   }
+  return [];
 }
-function trackIndexNear(pos) {
+async function loadTrack() {
+  if (track.length) return;
+  const train = trip.train, pts = await fetchTrack(train);
+  if (train !== trip?.train || !pts.length) return;
+  track = pts;
+  drawRoute();
+  drawBaseline();
+}
+function nearIndex(line, pos) {
   let best = 0, bd = Infinity;
   const [la, lo] = pos, k = Math.cos(la * Math.PI / 180);
-  track.forEach(([a, b], i) => { const d = (a - la) ** 2 + ((b - lo) * k) ** 2; if (d < bd) { bd = d; best = i; } });
+  line.forEach(([a, b], i) => { const d = (a - la) ** 2 + ((b - lo) * k) ** 2; if (d < bd) { bd = d; best = i; } });
   return best;
 }
+const trackIndexNear = pos => nearIndex(track, pos);
 
 // ---------- masts ----------
 // Cell sites from OpenCelliD with the operator and the measured range of each; only the ones in view, from zoom 8 in.
@@ -884,7 +896,9 @@ function drawRoute() {
   const now = Date.now(), next = stops.find(s => s.t > now);
   const pts = stops.map(s => ({ ...s, at: stations.find(x => x.code === s.code) })).filter(s => s.at);
   const line = { weight: 3, lineCap: 'round', interactive: false };
-  if (track.length) {
+  // The same check for the train being ridden: a partial trail would draw a stub, so the stops are joined instead.
+  const trailOk = track.length && pts.length >= 2 && L.latLng(track[trackIndexNear([pts[0].at.lat, pts[0].at.lon])]).distanceTo([pts[0].at.lat, pts[0].at.lon]) < 2000 && L.latLng(track[trackIndexNear([pts.at(-1).at.lat, pts.at(-1).at.lon])]).distanceTo([pts.at(-1).at.lat, pts.at(-1).at.lon]) < 2000;
+  if (trailOk) {
     const start = pts.length >= 2 ? trackIndexNear([pts[0].at.lat, pts[0].at.lon]) : 0;
     trackEnd = pts.length >= 2 ? trackIndexNear([pts.at(-1).at.lat, pts.at(-1).at.lon]) + 1 : track.length;
     L.polyline(track.slice(start, trackEnd), { ...line, weight: 2, color: '#93a6b5', opacity: .45 }).addTo(routeLayer);
@@ -907,6 +921,21 @@ function drawRoute() {
       className: `stop-label${end ? ' end' : ''}${isNext ? ' next' : ''}${passed ? ' passed' : ''}`
     }).addTo(routeLayer);
   });
+  // Connecting trains still ahead: their line dashed and dimmer, with every stop and the change stations named.
+  for (let j = (trip?.leg ?? 0) + 1; j < (trip?.legs.length ?? 0); j++) {
+    const lt = trip.legTimes?.[j], at = (lt?.codes || [trip.legs[j].from, trip.legs[j].to]).map(c => stations.find(x => x.code === c)).filter(Boolean);
+    if (at.length < 2) continue;
+    // A stored trail only stands in for the line when it really passes both end stations; otherwise the stops are joined.
+    const trail = legTracks[j] || [], ia = trail.length ? nearIndex(trail, [at[0].lat, at[0].lon]) : 0, ib = trail.length ? nearIndex(trail, [at.at(-1).lat, at.at(-1).lon]) : 0;
+    const passes = trail.length && L.latLng(trail[ia]).distanceTo([at[0].lat, at[0].lon]) < 2000 && L.latLng(trail[ib]).distanceTo([at.at(-1).lat, at.at(-1).lon]) < 2000 && Math.abs(ib - ia) > 5;
+    const lineOf = passes ? trail.slice(Math.min(ia, ib), Math.max(ia, ib) + 1) : at.map(s => [s.lat, s.lon]);
+    L.polyline(lineOf, { ...line, color: '#eef3f6', opacity: .75, dashArray: '6 6' }).addTo(routeLayer);
+    at.forEach((s, i) => {
+      const end = i === at.length - 1;
+      L.circleMarker([s.lat, s.lon], { radius: end ? 7 : 4, color: '#eef3f6', weight: end ? 3 : 2, fillColor: '#0d1b26', fillOpacity: 1, opacity: .7 })
+        .bindTooltip(end ? `${s.name}${lt?.arr ? ' ' + hhmm(lt.arr) : ''}` : s.name, { permanent: true, direction: 'right', offset: [8, 0], className: `stop-label${end ? ' end' : ' passed'}` }).addTo(routeLayer);
+    });
+  }
   hideCoveredLabels();
 }
 
@@ -923,10 +952,14 @@ async function loadLegTimes() {
     const rows = t.timeTableRows;
     const dep = rows.find(r => r.stationShortCode === leg.from && r.type === 'DEPARTURE');
     const arr = rows.find(r => r.stationShortCode === leg.to && r.type === 'ARRIVAL');
-    out.push({ label: t.commuterLineID ? `${t.commuterLineID} train` : `${t.trainType} ${t.trainNumber}`, dep: dep && when(dep), arr: arr && when(arr), track: dep?.commercialTrack || '' });
+    const codes = [...new Set(rows.filter(r => r.trainStopping && r.commercialStop).map(r => r.stationShortCode))];
+    const a = codes.indexOf(leg.from), b = codes.indexOf(leg.to);
+    out.push({ label: trainName(t), dep: dep && when(dep), arr: arr && when(arr), track: dep?.commercialTrack || '', codes: a >= 0 && b > a ? codes.slice(a, b + 1) : [leg.from, leg.to] });
   }
   trip.legTimes = out;
   store.set('netmap-trip', trip);
+  drawRoute();
+  for (let j = trip.leg + 1; j < trip.legs.length; j++) fetchTrack(trip.legs[j].train).then(pts => { legTracks[j] = pts; drawRoute(); }).catch(() => {});
   // Opened again mid-journey: jump to the leg that has not arrived yet.
   let i = out.findIndex(l => l?.arr && l.arr + 60000 > Date.now());
   if (i < 0) i = out.length - 1;
@@ -1260,16 +1293,28 @@ function openSetup() {
 }
 // Extra legs: each row is the next train, from where the previous one ends.
 function legRows() { return [...$('legs').querySelectorAll('.leg-row')]; }
-function legFrom(row) { const rows = legRows(), i = rows.indexOf(row); return i === 0 ? $('to').value : rows[i - 1].querySelector('.leg-to').value; }
-function syncLegLabels() { for (const row of legRows()) row.querySelector('.leg-change span').textContent = `Change in ${legFrom(row) || '...'}`; }
+function prevTo(row) { const rows = legRows(), i = rows.indexOf(row); return i === 0 ? $('to').value : rows[i - 1].querySelector('.leg-to').value; }
+function legFrom(row) { return row.querySelector('.leg-from').value; }
+// Each connecting train starts where the previous one ends, until its From field is changed by hand.
+function syncLegLabels() {
+  const rows = legRows();
+  rows.forEach((row, i) => {
+    row.querySelector('.leg-change span').textContent = rows.length > 1 ? `Connecting train ${i + 1}` : 'Connecting train';
+    const from = row.querySelector('.leg-from');
+    if (from.dataset.auto !== 'off') from.value = prevTo(row);
+  });
+}
 function addLegRow(leg = {}) {
   const n = legRows().length + 2, row = Object.assign(document.createElement('div'), { className: 'fields leg-row' });
   row.innerHTML = `<p class="leg-change"><span></span><button type="button">Remove</button></p>
-    <label>Then to<input class="leg-to" list="stations" placeholder="Like Jyväskylä" autocomplete="off" required></label>
-    <label>Train<input class="leg-train" list="trains-${n}" placeholder="Filled in, or type one like IC 63" autocomplete="off"></label>
+    <label>From<input class="leg-from" list="stations" placeholder="Where you change" autocomplete="off" required></label>
+    <label>To<input class="leg-to" list="stations" placeholder="Like Jyväskylä" autocomplete="off" required></label>
+    <label class="wide">Train<input class="leg-train" list="trains-${n}" placeholder="Filled in from the stations, or type one like Kiskobussi 429" autocomplete="off"></label>
     <datalist id="trains-${n}"></datalist>`;
-  const to = row.querySelector('.leg-to'), train = row.querySelector('.leg-train');
+  const from = row.querySelector('.leg-from'), to = row.querySelector('.leg-to'), train = row.querySelector('.leg-train');
   to.value = leg.to ? stationName(leg.to) : '';
+  if (leg.from) { from.value = stationName(leg.from); from.dataset.auto = 'off'; }
+  from.addEventListener('input', () => { from.dataset.auto = 'off'; to.dispatchEvent(new Event('input')); });
   train.value = leg.train || '';
   let auto = !leg.train, asked = '';
   train.oninput = () => { auto = !train.value; };
@@ -1332,7 +1377,7 @@ $('setup').querySelector('form').onsubmit = async e => {
   for (const row of legRows()) {
     const t = stationCode(row.querySelector('.leg-to').value);
     if (!t) { msg.textContent = 'Pick the station for every change from the list.'; return; }
-    plan.push({ from: plan.at(-1).to, to: t, text: row.querySelector('.leg-train').value });
+    plan.push({ from: stationCode(legFrom(row)) || plan.at(-1).to, to: t, text: row.querySelector('.leg-train').value });
   }
   btn.disabled = true; btn.textContent = plan.length > 1 ? 'Finding your trains' : 'Finding your train';
   try {

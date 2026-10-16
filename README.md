@@ -10,7 +10,7 @@ An **offline-first single html-file page** that follows your train across Finlan
 
 1. Download or clone this repository.
 2. Double-click `start.command` on a Mac, or run `./start.sh` on Linux. It serves the folder on `http://localhost:8080/` and opens it in your browser. Opening `index.html` straight from the file works too, with one difference: browsers forget notification permission for a file-opened page, so alerts then show only inside the page.
-3. Pick your departure and arrival stations. The train fills itself in, or type one, as `IC 63`, `IC63` or `63`. With changes on the way, press "Add a change of trains" for each one and give the next station and train; the page follows the first train, switches to the next when it arrives, and tells you the onward train and its track before each change.
+3. Pick your departure and arrival stations. The train fills itself in, or type one, as `IC 63`, `IC63` or `63`. With changes on the way, press "Add a connecting train" for each change and give its stations and train, as `Kiskobussi 429` from the ticket or just `429`; the page follows the first train, switches to the next when it arrives, and tells you the onward train and its track before each change.
 
 That is all it needs. The page tells you on screen if something is missing. The map background wants a free key from [CARTO](https://carto.com/basemaps): copy `config.example.js` to `config.js`, paste the key in and reload.
 
