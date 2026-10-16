@@ -1,3 +1,11 @@
+### 2.0.1: 2026-10-16
+
+* Move Follow train, Whole route and Masts to pill switches at the bottom right
+* Make Whole route a switch that returns to the previous view
+* Put Change trip, Alerts, Export and Import behind a settings button
+* Show offline in red and time with no samples in grey
+* Count the connection as back only when pages load again
+
 ### 2.0.0: 2026-10-16
 
 * Track journeys with train changes, switching trains at each change

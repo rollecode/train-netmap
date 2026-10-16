@@ -24,7 +24,7 @@ A trip can also be preset in the address: `index.html?train=63&from=PM&to=OL`, w
 
 📶 **Measures latency every 5 seconds and bandwidth every 2 minutes**, from a web worker that keeps going in a hidden tab.<br>
 
-🗺️ **Paints the track and 1.2 km hexagons by connection quality**, green, yellow, red and grey, with the measured median in each hexagon's tooltip.<br>
+🗺️ **Paints the track and 1.2 km hexagons by connection quality**, green, yellow, orange, red for offline and grey for time with no samples, with the measured median in each hexagon's tooltip.<br>
 
 🔮 **Forecasts the connection ahead**: dead zones, when it comes back, when it gets faster, in minutes at the train's speed, from your own trips first and Speedtest data where you have none.<br>
 
@@ -44,7 +44,7 @@ A trip can also be preset in the address: `index.html?train=63&from=PM&to=OL`, w
 
 ## How it measures
 
-Every 5 seconds the page sends a 300-byte request to Cloudflare and times the answer. No answer within 5 seconds counts as offline. Every 2 minutes it downloads 2 MB from Cloudflare to measure bandwidth, because the browser's own estimate stops at 10 Mbps. The measuring runs in a web worker, which Chrome does not slow down in a hidden tab, so samples, the tab icon and alerts keep going while you browse elsewhere. The one thing that can stop it is Chrome's Memory Saver discarding the tab after a long time unused; turn Memory Saver off or add the page to its exceptions under chrome://settings/performance if you leave the page hidden for an hour or more.
+Every 5 seconds the page sends a 300-byte request to Cloudflare and times the answer. Two unanswered requests in a row count as offline. Coming back takes more than one answer: two 50 KB downloads in a row have to finish within 6 seconds each, so a link that answers pings but cannot load a page still counts as offline, and a one-second blip does not set off a drop and a recovery alert. Every 2 minutes it downloads 2 MB from Cloudflare to measure bandwidth, because the browser's own estimate stops at 10 Mbps. The measuring runs in a web worker, which Chrome does not slow down in a hidden tab, so samples, the tab icon and alerts keep going while you browse elsewhere. The one thing that can stop it is Chrome's Memory Saver discarding the tab after a long time unused; turn Memory Saver off or add the page to its exceptions under chrome://settings/performance if you leave the page hidden for an hour or more.
 
 The train's position and speed come from Digitraffic every 15 seconds. While offline, the position is moved along the track at the last known speed, so dead zones are painted roughly where they happened. The track is the same train's GPS trail from an earlier day, fetched once per train.
 

@@ -13,7 +13,7 @@
   :root {
     --ink: #0d1b26; --ink-2: #142634; --line: #2a3d4d;
     --fg: #eef3f6; --muted: #93a6b5;
-    --good: #4cc38a; --fair: #e3b341; --poor: #ef6b5b; --off: #5f7180;
+    --good: #4cc38a; --fair: #e3b341; --poor: #f0883e; --off: #ef5b5b; --none: #5f7180;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
   *, *::before, *::after { box-sizing: border-box; }
@@ -58,23 +58,28 @@
   #forecast b { color: var(--fg); font-weight: 600; }
   .readings b { font-size: 20px; font-weight: 600; color: var(--fg); margin-right: 6px; }
 
-  .controls { position: absolute; top: 28px; right: 32px; z-index: 600; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 16px; max-width: 64%; }
-  .controls .group { display: flex; flex-wrap: wrap; gap: 4px; }
-  /* Switches sit together in a tray and show their state; the plain buttons beside them only open something. */
-  .toggles { background: rgba(238, 243, 246, .06); border-radius: 999px; padding: 3px; }
-  .toggle { position: relative; padding-left: 44px; color: var(--muted); }
-  .toggle::before { content: ''; position: absolute; left: 12px; top: 50%; width: 24px; height: 14px; border-radius: 999px; background: var(--line); transform: translateY(-50%); transition: background .2s; }
-  .toggle::after { content: ''; position: absolute; left: 14px; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transform: translateY(-50%); transition: left .2s, background .2s; }
-  .toggle[aria-pressed="true"] { color: var(--fg); }
-  .toggle[aria-pressed="true"]::before { background: var(--good); }
-  .toggle[aria-pressed="true"]::after { left: 26px; background: var(--ink); }
+  .controls { position: absolute; top: 24px; right: 24px; z-index: 950; }
+  #menu-btn { width: 40px; height: 40px; padding: 0; display: grid; place-items: center; color: var(--muted); background: rgba(238, 243, 246, .06); }
+  #menu-btn:hover, #menu-btn[aria-expanded="true"] { color: var(--fg); background: rgba(238, 243, 246, .12); }
+  #menu { position: absolute; top: 48px; right: 0; min-width: 200px; display: grid; padding: 6px; border-radius: 14px; background: rgba(20, 38, 52, .92); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 4px 16px rgba(0, 0, 0, .25); }
+  #menu[hidden] { display: none; }
+  #menu button { text-align: left; border-radius: 9px; padding: 9px 12px; }
+  /* Map switches sit quietly on the legend line: a dot that fills when on. The top bar keeps only buttons that open or do something. */
+  .trip-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 24px; margin-top: 6px; }
+  .trip-foot .legend { margin: 0; }
+  .switches { display: flex; flex-wrap: wrap; gap: 6px; }
+  .switch { display: flex; align-items: center; gap: 7px; padding: 5px 12px 5px 10px; font-size: 12px; color: var(--muted); background: rgba(13, 27, 38, .75); box-shadow: inset 0 0 0 1px var(--line); transition: background .2s, color .2s, box-shadow .2s; }
+  .switch:hover { background: rgba(20, 38, 52, .9); color: var(--fg); }
+  .switch::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--line); transition: background .2s; }
+  .switch[aria-pressed="true"] { color: var(--fg); background: rgba(76, 195, 138, .14); box-shadow: inset 0 0 0 1px rgba(76, 195, 138, .35); }
+  .switch[aria-pressed="true"]::before { background: var(--good); }
   button {
     font: inherit; color: var(--fg); background: none; border: 0; border-radius: 999px;
     padding: 6px 14px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s;
   }
   button:hover { background: rgba(238, 243, 246, .08); }
 
-  #trip { position: absolute; left: 32px; right: 32px; bottom: 24px; z-index: 600; }
+  #trip { position: absolute; left: 32px; right: 32px; bottom: 40px; z-index: 600; }
   .trip-head { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; align-items: baseline; }
   #trip-name { font-size: 17px; font-weight: 600; }
   #trip-name span { color: var(--muted); font-weight: 400; margin-left: 8px; }
@@ -203,12 +208,8 @@
 </header>
 
 <nav class="controls">
-  <div class="group toggles" aria-label="Map switches">
-    <button id="follow" class="toggle" aria-pressed="true">Follow train</button>
-    <button id="masts-btn" class="toggle" aria-pressed="false">Masts</button>
-  </div>
-  <div class="group actions">
-    <button id="whole">Whole route</button>
+  <button id="menu-btn" aria-label="Settings" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  <div id="menu" hidden>
     <button id="trip-btn">Change trip</button>
     <button id="notify">Alerts</button>
     <button id="export">Export data</button>
@@ -223,15 +224,23 @@
     <div id="trip-eta"></div>
   </div>
   <svg id="ribbon" role="img" aria-label="Connection quality along the trip"></svg>
+  <div class="trip-foot">
   <ul class="legend">
     <li><i style="background:var(--good)"></i>under 150 ms</li>
     <li><i style="background:var(--fair)"></i>150 to 400 ms</li>
     <li><i style="background:var(--poor)"></i>over 400 ms</li>
     <li><i style="background:var(--off)"></i>offline</li>
+    <li><i style="background:var(--none)"></i>not measured</li>
     <li class="op"><i style="background:#4f8cff;border-radius:50%;width:8px;height:8px"></i>Elisa</li>
     <li class="op"><i style="background:#b073ff;border-radius:50%;width:8px;height:8px"></i>Telia</li>
     <li class="op"><i style="background:#ff6fb1;border-radius:50%;width:8px;height:8px"></i>DNA</li>
   </ul>
+  <div class="switches" aria-label="Map switches">
+    <button id="follow" class="switch" aria-pressed="true">Follow train</button>
+    <button id="whole" class="switch" aria-pressed="false">Whole route</button>
+    <button id="masts-btn" class="switch" aria-pressed="false">Masts</button>
+  </div>
+  </div>
 </section>
 
 <div id="setup" hidden>
@@ -297,7 +306,7 @@ const CARTO_KEY = window.NETMAP_CONFIG?.cartoKey || '';
 const POLL = 5000, LOCATION_EVERY = 15000;
 const PROBE = 'https://cp.cloudflare.com/generate_204';
 let locAt = 0, locPausedUntil = 0;
-const COLORS = { good: '#4cc38a', fair: '#e3b341', poor: '#ef6b5b', off: '#5f7180' };
+const COLORS = { good: '#4cc38a', fair: '#e3b341', poor: '#f0883e', off: '#ef5b5b', none: '#5f7180' };
 const $ = id => document.getElementById(id);
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
@@ -1070,6 +1079,28 @@ function startTrip() {
   render();
 }
 
+// One lost probe is not a drop and one answer is not a recovery. Offline takes 2 failed probes in a row (10 s);
+// back takes 2 consecutive 50 KB downloads within 6 s each, so a link that answers pings but cannot load pages stays offline.
+const CONFIRM_URL = 'https://speed.cloudflare.com/__down?bytes=50000';
+let failRun = 0, confirmRun = 0, confirming = false;
+function updateState(p) {
+  if (!p.ok) {
+    failRun++; confirmRun = 0;
+    if (online === null || failRun >= 2) setState(false);
+    return;
+  }
+  failRun = 0;
+  if (online !== false) { setState(true); return; }
+  offlineReason = 'answers, but pages do not load yet';
+  if (confirming) return;
+  confirming = true;
+  const t0 = performance.now();
+  fetch(CONFIRM_URL, { cache: 'no-store', signal: AbortSignal.timeout(6000) })
+    .then(r => r.arrayBuffer())
+    .then(b => { confirmRun = b.byteLength >= 50000 ? confirmRun + 1 : 0; })
+    .catch(() => { confirmRun = 0; })
+    .finally(() => { confirming = false; if (confirmRun >= 2) { confirmRun = 0; setState(true); } render(); });
+}
 function setState(ok) {
   if (ok === online) return;
   if (!ok && online !== null) { outages++; notify('offline', 'Connection dropped', offlineReason ? `${offlineReason[0].toUpperCase()}${offlineReason.slice(1)}.` : '', 60000); }
@@ -1173,7 +1204,7 @@ function handleSample(p) {
   }
   if (!p.fix && lastPos) [p.lat, p.lon] = lastPos;
   lastSample = p.t;
-  setState(p.ok);
+  updateState(p);
   $('rtt').textContent = p.ok ? `${p.rtt} ms` : '-';
   if (p.ok && p.t - speedAt >= SPEED_EVERY) {
     const before = measured;
@@ -1253,7 +1284,7 @@ function render() {
     }
   }
   const last = points.at(-1);
-  setFavicon(online === null ? 'off' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
+  setFavicon(online === null ? 'none' : online ? quality(last || { ok: true, rtt: 0 }) : 'off');
   const bw = $('down').textContent;
   const live = [online && /Mbps/.test(bw) ? bw : null, lastKmh != null ? `${lastKmh} km/h` : null].filter(Boolean).join(', ');
   document.title = titleFlash ? `${titleFlash} - Train netmap` : online === false ? `Offline ${dur(Date.now() - since)} - Train netmap` : live ? `${live} - Train netmap` : 'Train netmap';
@@ -1272,7 +1303,8 @@ function drawRibbon() {
   const W = box.clientWidth, Y = 46, pad = 8;
   const t0 = stops[0].t, t1 = stops.at(-1).t, now = Date.now();
   const x = t => pad + Math.min(1, Math.max(0, (t - t0) / (t1 - t0))) * (W - pad * 2);
-  const nodes = [svg('line', { x1: x(t0), y1: Y, x2: x(t1), y2: Y, stroke: '#2a3d4d', 'stroke-width': 8, 'stroke-linecap': 'round' })];
+  // The bare line is time with no samples behind it, laptop closed or page shut: grey, apart from offline red.
+  const nodes = [svg('line', { x1: x(t0), y1: Y, x2: x(t1), y2: Y, stroke: '#3a4a59', 'stroke-width': 8, 'stroke-linecap': 'round' })];
 
   // Each sample paints the stretch of track until the next sample.
   const inTrip = points.filter(p => p.t >= t0 && p.t <= t1);
@@ -1428,16 +1460,37 @@ $('trip-btn').onclick = openSetup;
 $('follow').onclick = () => setFollow(!follow);
 $('masts-btn').onclick = () => setMasts(!mastsOn);
 if (mastsOn) setMasts(true);
+// Whole route is a switch: on frames the journey, off goes back to the view and follow state from before.
+let beforeWhole = null;
+const setWhole = on => $('whole').setAttribute('aria-pressed', on);
 $('whole').onclick = () => {
+  if (beforeWhole) {
+    const v = beforeWhole;
+    beforeWhole = null;
+    setWhole(false);
+    map.setView(v.center, v.zoom);
+    if (v.follow) setFollow(true);
+    return;
+  }
   const b = routeLayer.getLayers().flatMap(l => l.getLatLngs ? l.getLatLngs() : [l.getLatLng()]);
   if (lastPos) b.push(L.latLng(lastPos));
   if (b.length < 2) return;
+  beforeWhole = { center: map.getCenter(), zoom: map.getZoom(), follow };
   setFollow(false);
-  map.fitBounds(L.latLngBounds(b), { paddingTopLeft: [40, 160], paddingBottomRight: [40, 180] });
+  setWhole(true);
+  map.fitBounds(L.latLngBounds(b), { paddingTopLeft: [40, 160], paddingBottomRight: [40, 200] });
 };
+// Moving the map by hand ends the whole-route view without jumping back.
+map.on('dragstart', () => { if (beforeWhole) { beforeWhole = null; setWhole(false); } });
+$('follow').addEventListener('click', () => { if (beforeWhole) { beforeWhole = null; setWhole(false); } });
+// Settings menu
+const closeMenu = () => { $('menu').hidden = true; $('menu-btn').setAttribute('aria-expanded', false); };
+$('menu-btn').onclick = e => { e.stopPropagation(); const open = $('menu').hidden; $('menu').hidden = !open; $('menu-btn').setAttribute('aria-expanded', open); };
+$('menu').addEventListener('click', closeMenu);
+addEventListener('click', e => { if (!e.target.closest('.controls')) closeMenu(); });
 $('setup-cancel').onclick = () => { $('setup').hidden = true; };
 // Esc and a click on the dimmed backdrop close the panels; the trip form stays when there is no trip yet.
-addEventListener('keydown', e => { if (e.key === 'Escape') { $('alerts').hidden = true; $('arrived').hidden = true; if (trip) $('setup').hidden = true; } });
+addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); $('alerts').hidden = true; $('arrived').hidden = true; if (trip) $('setup').hidden = true; } });
 for (const id of ['setup', 'alerts', 'arrived']) $(id).addEventListener('click', e => { if (e.target === $(id) && (id !== 'setup' || trip)) $(id).hidden = true; });
 $('setup').querySelector('form').onsubmit = async e => {
   e.preventDefault();
