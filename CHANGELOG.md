@@ -1,3 +1,7 @@
+### 2.0.3: 2026-10-16
+
+* Show offline in red everywhere, the headline and the train marker included
+
 ### 2.0.2: 2026-10-16
 
 * Count down to the journey's final stop only, show the offline share in red

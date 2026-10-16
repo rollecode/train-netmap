@@ -29,7 +29,7 @@
   #status h1 { margin: 0; font-size: 44px; line-height: 1.05; font-weight: 650; letter-spacing: -.02em; display: flex; flex-wrap: wrap; gap: 0 16px; align-items: baseline; }
   #state { color: var(--muted); transition: color .4s; }
   [data-state="online"] #state { color: var(--good); }
-  [data-state="offline"] #state { color: var(--poor); }
+  [data-state="offline"] #state { color: var(--off); }
   #for { font-weight: 400; color: var(--fg); }
   #for .short { display: none; }
   @media (max-width: 1100px) { #for .long { display: none; } #for .short { display: inline; } }
@@ -113,7 +113,7 @@
   .toast.leaving { transform: translateX(120%); opacity: 0; }
   .toast b { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 2px; }
   .toast b::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
-  .toast.bad b::before { background: var(--poor); }
+  .toast.bad b::before { background: var(--off); }
   .toast.warn b::before { background: var(--fair); }
   .toast span { color: var(--muted); font-size: 13px; }
   @keyframes toast-in { from { transform: translateX(120%); opacity: 0; } }
@@ -137,7 +137,7 @@
   .primary { background: var(--good); color: var(--ink); font-weight: 600; padding: 10px 22px; }
   .primary:hover { background: #63d29c; }
   .primary:disabled { background: var(--line); color: var(--muted); cursor: progress; }
-  #setup-msg { margin: 20px 0 0; min-height: 1.45em; color: var(--poor); }
+  #setup-msg { margin: 20px 0 0; min-height: 1.45em; color: var(--off); }
 
   .leaflet-container { font: 12px/1.4 var(--sans); background: var(--ink); }
   .leaflet-bar { border: 0 !important; box-shadow: none !important; }
@@ -163,7 +163,7 @@
   }
   .you { --ring: var(--muted); }
   [data-state="online"] .you { --ring: var(--good); }
-  [data-state="offline"] .you { --ring: var(--poor); }
+  [data-state="offline"] .you { --ring: var(--off); }
   .you i, .you b { position: absolute; inset: 0; border-radius: 50%; }
   .you b { background: var(--fg); border: 3px solid var(--ink); box-shadow: 0 0 0 2px var(--ring); }
   .you i { background: var(--ring); animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
@@ -180,7 +180,7 @@
   .mast.mobile { --c: var(--good); }
   @keyframes beacon { 0% { transform: scale(.4); opacity: .35; } 100% { transform: scale(2.6); opacity: 0; } }
   .ribbon-pulse { fill: var(--good); transform-box: fill-box; transform-origin: center; animation: pulse 2s cubic-bezier(.16, 1, .3, 1) infinite; }
-  [data-state="offline"] .ribbon-pulse { fill: var(--poor); }
+  [data-state="offline"] .ribbon-pulse { fill: var(--off); }
   [data-state="connecting"] .ribbon-pulse { fill: var(--muted); }
   @keyframes pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(3.2); opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
