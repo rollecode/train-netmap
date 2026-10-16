@@ -1,3 +1,7 @@
+### 2.0.4: 2026-10-16
+
+* Show the time left to the next change bottom right, with the delay on its own line
+
 ### 2.0.3: 2026-10-16
 
 * Show offline in red everywhere, the headline and the train marker included

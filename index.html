@@ -83,7 +83,9 @@
   .trip-head { text-shadow: 0 0 3px var(--ink), 0 0 8px var(--ink); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 24px; align-items: baseline; }
   #trip-name { font-size: 17px; font-weight: 600; }
   #trip-name span { color: var(--muted); font-weight: 400; margin-left: 8px; }
-  #trip-eta { color: var(--muted); }
+  /* Two right-aligned lines with fixed-width digits, so a changing delay or minute count never shifts the line beside it. */
+  #trip-eta { color: var(--muted); display: grid; justify-items: end; min-width: 30ch; text-align: right; font-variant-numeric: tabular-nums; }
+  #trip-eta .late { font-size: 12px; }
   #trip-eta b { color: var(--fg); font-weight: 600; }
   #ribbon { display: block; width: 100%; height: 92px; overflow: visible; }
   #ribbon text { fill: var(--muted); font: 12px var(--sans); paint-order: stroke; stroke: var(--ink); stroke-width: 4px; stroke-linejoin: round; }
@@ -1369,12 +1371,14 @@ function drawRibbon() {
   $('trip-name').innerHTML = '';
   $('trip-name').append(trainLabel || `Train ${trip.train}`, Object.assign(document.createElement('span'), { textContent: `${stops[0].name} to ${last.name}${trip.legs.length > 1 ? `, train ${trip.leg + 1} of ${trip.legs.length}` : ''}` }));
   const late = last.late > 0 ? `${last.late}min late` : last.late < 0 ? `${-last.late}min early` : 'on time';
-  $('trip-eta').innerHTML = '';
-  $('trip-eta').append(
-    next && next !== last ? `Next ${next.name} ${hhmm(next.t)}, ` : '',
-    Object.assign(document.createElement('b'), { textContent: `${last.name} ${hhmm(last.t)}` }),
-    `, ${late}`
-  );
+  // Minutes only here; the seconds already run in the headline countdown.
+  const leftMin = Math.ceil((last.t - Date.now()) / 60000), hrs = Math.floor(leftMin / 60), mins = leftMin % 60;
+  const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const inText = leftMin <= 0 ? 'now' : leftMin === 1 ? 'in under a minute' : `in ${[hrs ? unit(hrs, 'hour') : '', mins ? unit(mins, 'minute') : ''].filter(Boolean).join(', ')}`;
+  const lateLine = Object.assign(document.createElement('span'), { className: 'late', textContent: late[0].toUpperCase() + late.slice(1) });
+  const mainLine = document.createElement('span');
+  mainLine.append(next && next !== last ? `Next ${next.name} ${hhmm(next.t)}, ` : '', Object.assign(document.createElement('b'), { textContent: `${last.name} ${inText}` }));
+  $('trip-eta').replaceChildren(lateLine, mainLine);
 }
 
 // ---------- controls ----------
